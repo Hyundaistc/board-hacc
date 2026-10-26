@@ -1,21 +1,29 @@
 rules_version = '2';
-// Règles de sécurité du Board HACC — à coller dans Firebase → Firestore → Règles.
-// Accès : comptes @hyundaistconstant.com + adresses listées dans la collection « membres ».
-// Admins (liste ci-dessous) : inventaire HACC, numéros de stock, gestion des membres.
+// Règles de sécurité — Board HACC / Inventaire usagé D2C (Hyundai St-Constant)
+// Accès sur INVITATION seulement : l'admin ajoute chaque personne dans « membres » (ID = courriel en minuscules).
+//   role "equipe"  : voit tout et peut cocher Vendu, saisir les ventes
+//   role "lecture" : voit seulement
+// Admins (liste ci-dessous) : tout, + inventaires, coûtants, gestion des accès.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
     function email() { return request.auth.token.email.lower(); }
     function isAdmin() { return signedIn() && email() in ['melanie@hyundaistconstant.com']; }
-    function isStaff() {
-      return signedIn() && (email().matches('.*@hyundaistconstant[.]com$')
-        || exists(/databases/$(database)/documents/membres/$(email())));
-    }
+    function memberPath() { return /databases/$(database)/documents/membres/$(email()); }
+    function isMember() { return signedIn() && exists(memberPath()); }
+    function canRead() { return isAdmin() || isMember(); }
+    function canWrite() { return isAdmin() || (isMember() && get(memberPath()).data.role != 'lecture'); }
 
-    match /suivi/{id}      { allow read, write: if isStaff(); }
-    match /config/{id}     { allow read: if isStaff();
-                             allow write: if (id != 'stock' && isStaff()) || isAdmin(); }
-    match /inventaire/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
-    match /membres/{id}    { allow read: if isStaff(); allow write: if isAdmin(); }
+    // Inventaire neuf (HACC)
+    match /suivi/{id}            { allow read: if canRead(); allow write: if canWrite(); }
+    match /config/{id}           { allow read: if canRead(); allow write: if (id != 'stock' && canWrite()) || isAdmin(); }
+    match /inventaire/{id}       { allow read: if canRead(); allow write: if isAdmin(); }
+    // Inventaire usagé (D2C)
+    match /usage_suivi/{id}      { allow read: if canRead(); allow write: if canWrite(); }
+    match /usage_config/{id}     { allow read: if canRead(); allow write: if canWrite(); }
+    match /usage_inventaire/{id} { allow read: if canRead(); allow write: if isAdmin(); }
+    match /usage_couts/{id}      { allow read, write: if isAdmin(); }
+    // Accès
+    match /membres/{id}          { allow read: if isAdmin() || (signedIn() && id == email()); allow write: if isAdmin(); }
   }
 }

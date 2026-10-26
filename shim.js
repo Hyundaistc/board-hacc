@@ -91,37 +91,59 @@
   const isAdmin = () => !!currentUser && (window.HACC_ADMINS || []).map(s => s.toLowerCase()).includes((currentUser.email || '').toLowerCase());
   const USER = { id: async () => currentUser ? currentUser.email : '', canEdit: () => isAdmin(), name: () => currentUser ? (currentUser.displayName || currentUser.email) : '' };
 
+  // Chaque page a son « espace » dans la base : '' = inventaire neuf, 'usage_' = inventaire usagé
+  const PFX = window.HACC_DB_PREFIX || '';
+  const wrapDb = raw => !PFX ? raw : { collection: c => raw.collection(PFX + c), doc: p => raw.doc(PFX + p), batch: () => raw.batch() };
+
   window.claude = {
     use: async name => {
       if (!currentUser) return null;
-      if (name === 'db') return db;
+      if (name === 'db') return wrapDb(db);
       if (name === 'user') return USER;
       if (name === 'mcp') return MCP;
       return null;
     }
   };
 
-  // ---------- Import de l'inventaire (favori HACC ou fichier) ----------
-  async function importData(data, source) {
-    const B = window.HACC_BOARD;
-    if (!isAdmin()) throw new Error('Seule une administratrice peut mettre à jour l\'inventaire.');
-    if (!data || data.type !== 'hacc-board-seed' || !Array.isArray(data.rows)) throw new Error('Fichier non reconnu.');
-    if (data.rows.length < 20) throw new Error('Trop peu de véhicules reçus (' + data.rows.length + ').');
-    const date = data.date || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
-    const at = new Date().toISOString();
-    await db.doc('inventaire/actuel').set({ date, at, by: currentUser.email, source, json: JSON.stringify(data.rows) });
-    if (data.stock && Object.keys(data.stock).length) await db.doc('config/stock').set({ map: data.stock, at }, { merge: true });
-    // Migration depuis l'ancien board Claude : ventes/suivi + réglages (n'écrase pas ce qui existe déjà)
-    let migr = 0;
-    const docs = [...Object.entries(data.suivi || {}).map(([id, d]) => ['suivi/' + id, d]), ...Object.entries(data.config || {}).filter(([id]) => id !== 'stock').map(([id, d]) => ['config/' + id, d])];
-    for (let i = 0; i < docs.length; i += 400) {
+  // Copie des documents (migration) sans écraser ce qui existe déjà
+  async function copyDocs(base, entries, overwrite) {
+    let n = 0;
+    for (let i = 0; i < entries.length; i += 400) {
       const batch = db.batch();
-      for (const [p, d] of docs.slice(i, i + 400)) { const ref = db.doc(p); const cur = await ref.get(); if (!cur.exists) { batch.set(ref, d); migr++; } }
+      for (const [p, d] of entries.slice(i, i + 400)) {
+        const ref = base.doc(p);
+        if (!overwrite(p)) { const cur = await ref.get(); if (cur.exists) continue; }
+        batch.set(ref, d); n++;
+      }
       await batch.commit();
     }
+    return n;
+  }
+
+  // ---------- Import (favori HACC ou fichier) ----------
+  async function importData(data, source) {
+    if (!isAdmin()) throw new Error('Seule une administratrice peut mettre à jour l\'inventaire.');
+    const at = new Date().toISOString();
+    if (data && data.type === 'd2c-seed') {
+      if (PFX !== 'usage_') throw new Error('Ce fichier est pour l\'inventaire usagé : importez-le depuis la page « Inventaire usagé ».');
+      if (!Array.isArray(data.inv) || data.inv.length < 5) throw new Error('Fichier D2C vide ou illisible.');
+      const base = wrapDb(db), invAt = data.at || at;
+      await base.doc('inventaire/actuel').set({ at: invAt, date: invAt.slice(0, 10), by: currentUser.email, source, json: JSON.stringify(data.inv) });
+      const migr = await copyDocs(base, Object.entries(data.docs || {}), p => p.startsWith('couts/'));
+      window.D2C_BOARD && window.D2C_BOARD.setInv(data.inv, invAt);
+      return `Inventaire usagé mis à jour : ${data.inv.length} véhicules.` + (migr ? ` ${migr} fiche(s) de ventes/réglages importée(s).` : '');
+    }
+    const B = window.HACC_BOARD;
+    if (!data || data.type !== 'hacc-board-seed' || !Array.isArray(data.rows)) throw new Error('Fichier non reconnu.');
+    if (PFX) throw new Error('Ce fichier est pour l\'inventaire neuf : importez-le depuis la page « Inventaire neuf ».');
+    if (data.rows.length < 20) throw new Error('Trop peu de véhicules reçus (' + data.rows.length + ').');
+    const date = data.date || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+    await db.doc('inventaire/actuel').set({ date, at, by: currentUser.email, source, json: JSON.stringify(data.rows) });
+    if (data.stock && Object.keys(data.stock).length) await db.doc('config/stock').set({ map: data.stock, at }, { merge: true });
+    const migr = await copyDocs(db, [...Object.entries(data.suivi || {}).map(([id, d]) => ['suivi/' + id, d]), ...Object.entries(data.config || {}).filter(([id]) => id !== 'stock').map(([id, d]) => ['config/' + id, d])], () => false);
     if (B) { B.setInvStamp(at); B.applyInventory(data.rows, date); B.setSnapAt(at); B.render(); B.incoming(); }
     const c = { D: 0, T: 0, O: 0 }; data.rows.forEach(r => { const g = r[0] === 'S' ? 'O' : r[0]; if (c[g] != null) c[g]++; });
-    const msg = `Inventaire mis à jour : ${c.D} en stock, ${c.T} en transit, ${c.O} en commande.` + (migr ? ` ${migr} fiche${migr > 1 ? 's' : ''} de ventes/réglages importée${migr > 1 ? 's' : ''}.` : '');
+    const msg = `Inventaire mis à jour : ${c.D} en stock, ${c.T} en transit, ${c.O} en commande.` + (migr ? ` ${migr} fiche(s) de ventes/réglages importée(s).` : '');
     B && B.haccMsg(msg);
     return msg;
   }
@@ -133,19 +155,40 @@
     try { const m = await importData(e.data, 'HACC'); e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: true, msg: m }, e.origin); }
     catch (err) { e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: false, msg: err.message }, e.origin); window.HACC_BOARD && window.HACC_BOARD.haccMsg(err.message, true); }
   });
-  // Signale au favori HACC que l'app est prête à recevoir l'inventaire
   function announceReady() { if (window.opener) { try { window.opener.postMessage({ type: 'hacc-board-ready' }, HACC_ORIGIN); } catch (e) {} } }
 
-  // ---------- Fenêtre d'aide « Mettre à jour depuis HACC » ----------
+  // ---------- Fenêtre « Mettre à jour » ----------
   function bookmarkletCode() {
-    const app = location.origin + location.pathname;
+    const app = location.origin + location.pathname.replace(/[^/]*$/, '') + 'index.html';
     const src = $('bm-src').textContent.replace('__APP__', app);
     return 'javascript:' + encodeURIComponent('(function(){' + src + '})()');
   }
-  function openHaccHelp() {
-    const d = $('haccdlg'); $('bm-link').href = bookmarkletCode(); d.showModal();
+  function openHaccHelp() { const d = $('haccdlg'); if ($('bm-link')) $('bm-link').href = bookmarkletCode(); d.showModal(); }
+
+  // ---------- Gestion des accès (invitations) ----------
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let unsubMembers = null;
+  function openMembers() {
+    const d = $('memdlg'); d.showModal();
+    if (unsubMembers) return;
+    unsubMembers = db.collection('membres').onSnapshot(s => {
+      const rows = s.docs.map(x => ({ id: x.id, ...x.data() })).sort((a, b) => a.id.localeCompare(b.id));
+      $('memlist').innerHTML = (window.HACC_ADMINS || []).map(a => `<tr><td>${esc(a)}</td><td>Admin</td><td></td></tr>`).join('') +
+        (rows.length ? rows.map(r => `<tr><td>${esc(r.id)}${r.nom ? `<small>${esc(r.nom)}</small>` : ''}</td><td><select data-memrole="${esc(r.id)}" class="vi"><option value="equipe" ${r.role !== 'lecture' ? 'selected' : ''}>Équipe (modifie)</option><option value="lecture" ${r.role === 'lecture' ? 'selected' : ''}>Lecture seule</option></select></td><td><button class="tb-btn danger" data-memdel="${esc(r.id)}" type="button">Retirer</button></td></tr>`).join('')
+          : '<tr><td colspan="3" class="hint">Personne d\'invité pour l\'instant.</td></tr>');
+    }, e => { $('memmsg').textContent = 'Lecture impossible : ' + e.message; });
   }
-  window.HACC_APP = { openHaccHelp, connectGoogle };
+  async function addMember(ev) {
+    ev.preventDefault();
+    const em = $('memEmail').value.trim().toLowerCase(), nom = $('memNom').value.trim(), role = $('memRole').value;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { $('memmsg').textContent = 'Courriel invalide.'; return; }
+    try { await db.doc('membres/' + em).set({ role, nom, ajoutePar: currentUser.email, at: new Date().toISOString() }); $('memmsg').textContent = em + ' a maintenant accès. Envoyez-lui le lien du board : il se connecte avec ce compte Google.'; $('memEmail').value = ''; $('memNom').value = ''; }
+    catch (e) { $('memmsg').textContent = 'Non enregistré : ' + e.message; }
+  }
+  document.addEventListener('change', async e => { const r = e.target.dataset && e.target.dataset.memrole; if (r) { try { await db.doc('membres/' + r).set({ role: e.target.value }, { merge: true }); $('memmsg').textContent = 'Rôle mis à jour.'; } catch (x) { $('memmsg').textContent = x.message; } } });
+  document.addEventListener('click', async e => { const b = e.target.closest && e.target.closest('[data-memdel]'); if (!b) return; const id = b.dataset.memdel; if (!confirm('Retirer l\'accès de ' + id + ' ?')) return; try { await db.doc('membres/' + id).delete(); $('memmsg').textContent = id + ' n\'a plus accès.'; } catch (x) { $('memmsg').textContent = x.message; } });
+
+  window.HACC_APP = { openHaccHelp, connectGoogle, openMembers };
 
   // ---------- Démarrage ----------
   function show(state) {
@@ -154,7 +197,7 @@
   }
   function loadApp() {
     if (appLoaded) return; appLoaded = true;
-    const s = document.createElement('script'); s.src = 'app.js?v=' + (window.HACC_VERSION || '1'); s.onload = announceReady; document.body.appendChild(s);
+    const s = document.createElement('script'); s.src = (window.HACC_APP_SCRIPT || 'app.js') + '?v=' + (window.HACC_VERSION || '1'); s.onload = announceReady; document.body.appendChild(s);
   }
   async function signIn() {
     $('gate-err').textContent = '';
@@ -167,7 +210,11 @@
     $('btn-logout').onclick = () => { try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) {} auth.signOut().then(() => location.reload()); };
     $('btn-denied-out').onclick = () => auth.signOut().then(() => location.reload());
     $('btn-google').onclick = () => connectGoogle().then(() => location.reload()).catch(e => alert(e.message));
+    $('btn-members').onclick = openMembers;
+    $('memform').onsubmit = addMember;
+    $('memclose').onclick = () => $('memdlg').close();
     $('dlg-close').onclick = () => $('haccdlg').close();
+    if ($('btn-import')) $('btn-import').onclick = openHaccHelp;
     $('importfile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       const out = $('importmsg'); out.textContent = 'Lecture…';
@@ -181,11 +228,12 @@
     auth.onAuthStateChanged(async u => {
       currentUser = u;
       if (!u) { show('login'); return; }
-      // Vérifie l'accès en lisant un document protégé par les règles
-      try { await db.doc('config/ventes').get(); }
-      catch (e) { $('denied-email').textContent = u.email; show('denied'); return; }
-      $('who').textContent = u.email + (isAdmin() ? ' · admin' : '');
-      $('adminbox').hidden = !isAdmin();
+      // Accès sur invitation : admin, ou fiche dans « membres »
+      let ok = isAdmin(), role = isAdmin() ? 'admin' : '';
+      if (!ok) { try { const m = await db.doc('membres/' + u.email.toLowerCase()).get(); ok = m.exists; role = ok ? (m.data().role || 'equipe') : ''; } catch (e) { ok = false; } }
+      if (!ok) { $('denied-email').textContent = u.email; show('denied'); return; }
+      $('who').textContent = u.email + (role === 'admin' ? ' · admin' : role === 'lecture' ? ' · lecture seule' : '');
+      document.querySelectorAll('.admin-only').forEach(x => x.hidden = !isAdmin());
       show('app'); googleBanner(); loadApp();
     });
   });
