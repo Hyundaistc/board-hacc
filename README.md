@@ -20,6 +20,7 @@ Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux deux i
 | `shim.js` | Branche le board sur Firebase et les API Google |
 | `firebase-config.js` | Configuration Firebase + liste des admins |
 | `firestore.rules` | Règles de sécurité (à coller dans la console Firebase) |
+| `logo.png` | Logo Hyundai St-Constant (fond transparent ; affiché en blanc sur la barre bleue et en mode sombre) |
 
 ## Ajouter un admin
 1. Ajouter l'adresse dans `HACC_ADMINS` (`firebase-config.js`)
