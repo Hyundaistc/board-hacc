@@ -55,17 +55,21 @@ function invView(){
     <td>${(PRETS.rows||[]).some(p=>p.stock&&normName(p.stock)===normName(r.stock))?'<span class="pill p-warn">Prêté</span> ':''}${r.live?`<span class="pill p-n">En ligne</span>${r.url&&r.url!=='#'?` <a class="lnk" href="${esc(r.url)}" target="_blank" rel="noopener">voir</a>`:''}`:'<span class="pill p-bad">Non publié</span>'}</td>
     <td class="num mono">${esc(r.pics||'0')}</td><td class="mono"><small>${esc(r.vin)}</small></td>
     <td class="c-sold"><input type="checkbox" data-k="${k}" aria-label="Vendu ${esc(r.stock)}" ${n.vendu?'checked':''} ${DB?'':'disabled'}></td>
+    <td class="c-date"><input type="date" data-dk="${k}" value="${esc(n.vendu?(n.soldAt||''):'')}" aria-label="Date de vente ${esc(r.stock)}" ${DB&&n.vendu?'':'disabled'}></td>
     <td class="c-com"><input type="text" data-k="${k}" value="${esc(n.comment||'')}" aria-label="Commentaire ${esc(r.stock)}" ${DB?'':'disabled'}></td></tr>`}).join('');
   document.getElementById('view').innerHTML=`<div class="chips" role="group" aria-label="Filtres">${FILTS.map(([k,l])=>`<button class="chip" data-filt="${k}" aria-pressed="${filt===k}">${l} · ${cnt(k)}</button>`).join('')}</div>
   <div class="box" style="margin-top:10px"><div class="box-h"><h2>${FILTS.find(x=>x[0]===filt)[1]}</h2><span class="meta">${rows.length} véhicule${rows.length>1?'s':''} · cliquez un en-tête pour trier${COUTS?' · coûtant : '+esc(COUT_SRC)+' (visible par les éditeurs seulement)':''}</span></div>
-  <div class="tbl"><table class="veh"><thead><tr><th>#</th><th>Stock</th>${th('model','Véhicule')}<th>Couleur</th>${th('km','Km','num')}${th('price','Prix','num')}${COUTS?th('cost','Coûtant','num')+th('marge','Écart','num'):''}${th('days','En stock','num')}<th>Certifié</th><th>Site web</th><th class="num">Photos</th><th>NIV</th><th class="c-sold">Vendu</th><th>Commentaire</th></tr></thead>
-  <tbody>${body||'<tr><td colspan="15" class="empty-row">Aucun véhicule.</td></tr>'}</tbody></table></div></div>`;
+  <div class="tbl"><table class="veh"><thead><tr><th>#</th><th>Stock</th>${th('model','Véhicule')}<th>Couleur</th>${th('km','Km','num')}${th('price','Prix','num')}${COUTS?th('cost','Coûtant','num')+th('marge','Écart','num'):''}${th('days','En stock','num')}<th>Certifié</th><th>Site web</th><th class="num">Photos</th><th>NIV</th><th class="c-sold">Vendu</th><th class="c-date">Date</th><th>Commentaire</th></tr></thead>
+  <tbody>${body||'<tr><td colspan="16" class="empty-row">Aucun véhicule.</td></tr>'}</tbody></table></div></div>`;
 }
 // Vendu / commentaire depuis l'inventaire
 document.addEventListener('change',e=>{const i=e.target;if(i.matches('input[type=checkbox][data-k]')){const k=i.dataset.k,r=INV.find(x=>keyOf(x)===k),o=NOTES[k]||{};
   const v=o.vente||{};const base=r?{marque:r.make,modele:r.model,annee:r.year,stock:r.stock}:{};
   NOTES[k]={...o,vendu:i.checked,soldAt:i.checked?(o.soldAt||todayTO()):o.soldAt,vente:{...base,...v,client:v.client||o.comment||''}};
-  saveNote(k);render()}});
+  saveNote(k);render()}
+  // Date de vente (à côté de Vendu) : enregistrée seulement si l'auto est vendue et la date complète
+  if(i.matches('input[type=date][data-dk]')){const k=i.dataset.dk,o=NOTES[k]||{};if(!o.vendu||!/^20\d\d-\d\d-\d\d$/.test(i.value))return;NOTES[k]={...o,soldAt:i.value};saveNote(k);tabsUI()}});
+document.addEventListener('focusout',e=>{const i=e.target;if(i.matches&&i.matches('input[type=date][data-dk]')){const n=NOTES[i.dataset.dk]||{};i.value=n.vendu?(n.soldAt||''):''}});
 const tmr={};
 document.addEventListener('input',e=>{const i=e.target;if(i.matches('input[type=text][data-k]')){const k=i.dataset.k;NOTES[k]={...(NOTES[k]||{}),comment:i.value};clearTimeout(tmr[k]);tmr[k]=setTimeout(()=>saveNote(k),800)}});
 
@@ -158,8 +162,8 @@ function render(){setSnap();kpis();tabsUI();if(tab==='inv')invView();else ventes
   try{CAN_EDIT=USER?!!(await Promise.resolve(USER.canEdit())):false}catch(e){}
   try{MCP=await window.claude?.use?.('mcp')}catch(e){MCP=null}
   let first=true;
-  DB.collection('suivi').onSnapshot(s=>{s.docs.forEach(d=>{if(!d.exists)return;const x=d.data()||{};const ed=document.activeElement?.dataset?.vk===d.id||document.activeElement?.dataset?.k===d.id;if(ed&&!first)return;NOTES[d.id]={vendu:!!x.vendu,comment:x.comment||'',soldAt:x.soldAt||'',vente:x.vente||{}}});
-    if(first){first=false;render();if(CAN_EDIT&&MCP){syncBoard();setInterval(syncBoard,5*60*1000)}}else if(!document.activeElement?.dataset?.vk&&!document.activeElement?.dataset?.k)render();else{kpis();tabsUI();ventesSummary()}});
+  DB.collection('suivi').onSnapshot(s=>{const ae=document.activeElement?.dataset||{};s.docs.forEach(d=>{if(!d.exists)return;const x=d.data()||{};const ed=ae.vk===d.id||ae.k===d.id||ae.dk===d.id;if(ed&&!first)return;NOTES[d.id]={vendu:!!x.vendu,comment:x.comment||'',soldAt:x.soldAt||'',vente:x.vente||{}}});
+    if(first){first=false;render();if(CAN_EDIT&&MCP){syncBoard();setInterval(syncBoard,5*60*1000)}}else if(!ae.vk&&!ae.k&&!ae.dk)render();else{kpis();tabsUI();ventesSummary()}});
   DB.doc('config/ventes').onSnapshot(s=>{if(s.exists){const x=s.data()||{};CFG={objectif:x.objectif??50,objMoy:x.objMoy??1800};if(tab==='ventes'&&!['vobj','vobjm'].includes(document.activeElement?.id))ventesSummary()}});
   try{DB.doc('couts/actuel').onSnapshot(s=>{if(s.exists){const x=s.data()||{};COUTS=x.map||null;COUT_SRC=x.source||'';if(tab==='inv'&&!document.activeElement?.dataset?.k)invView()}},()=>{COUTS=null})}catch(e){}
   DB.doc('config/prets').onSnapshot(s=>{if(s.exists){PRETS=s.data()||{rows:[]};if(!document.activeElement?.dataset?.vk)render()}});

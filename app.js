@@ -88,13 +88,16 @@ const VKEYS=new Set();
 function extraVehicles(){if(!VKEYS.size)V.forEach(v=>VKEYS.add(keyOf(v)));return Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&!VKEYS.has(k)).map(([k,n])=>{const x=n.vente||{};return {_k:k,g:'X',vin:'',niv:x.niv||'',model:x.model||'—',ver:x.gamme||'',ext:x.couleur||'',int:'',year:x.annee||'',order:'',loc:'',place:'',sold:'',eta:'',age:0,pmon:'',recall:0}})}
 const vehOf=k=>V.find(z=>keyOf(z)===k)||extraVehicles().find(z=>z._k===k);
 const trackHead='<th class="c-sold">Vendu</th><th class="c-com">Commentaire</th>';
-const trackCells=(v,p)=>{const k=keyOf(v),n=NOTES[k]||{};return `<td class="c-sold"><input type="checkbox" id="${p}s-${k}" data-k="${k}" aria-label="Vendu" ${n.vendu?'checked':''} ${DB?'':'disabled'}></td><td class="c-com"><input type="text" id="${p}c-${k}" data-k="${k}" value="${esc(n.comment||'')}" placeholder="" aria-label="Commentaire" ${DB?'':'disabled'}></td>`};
+const trackHeadD='<th class="c-sold">Vendu</th><th class="c-date">Date</th><th class="c-com">Commentaire</th>'; // En stock : date de vente après Vendu
+const dateCell=(v,p)=>{const k=keyOf(v),n=NOTES[k]||{};return `<td class="c-date"><input type="date" id="${p}d-${k}" data-dk="${k}" value="${esc(n.vendu?(n.soldAt||''):'')}" aria-label="Date de vente" ${DB&&n.vendu?'':'disabled'}></td>`};
+const trackCells=(v,p,withDate)=>{const k=keyOf(v),n=NOTES[k]||{};return `<td class="c-sold"><input type="checkbox" id="${p}s-${k}" data-k="${k}" aria-label="Vendu" ${n.vendu?'checked':''} ${DB?'':'disabled'}></td>${withDate?dateCell(v,p):''}<td class="c-com"><input type="text" id="${p}c-${k}" data-k="${k}" value="${esc(n.comment||'')}" placeholder="" aria-label="Commentaire" ${DB?'':'disabled'}></td>`};
 const rowAttr=v=>{const k=keyOf(v);return ` data-row="${k}" class="${NOTES[k]?.vendu?'sold':''}"`};
 function paint(k){
   const n=NOTES[k]||{};
   document.querySelectorAll(`tr[data-row="${k}"]`).forEach(tr=>tr.classList.toggle('sold',!!n.vendu));
   document.querySelectorAll(`input[type=checkbox][data-k="${k}"]`).forEach(i=>{i.checked=!!n.vendu});
   document.querySelectorAll(`input[type=text][data-k="${k}"]`).forEach(i=>{if(document.activeElement!==i)i.value=n.comment||''});
+  document.querySelectorAll(`input[type=date][data-dk="${k}"]`).forEach(i=>{i.disabled=!DB||!n.vendu;if(document.activeElement!==i)i.value=n.vendu?(n.soldAt||''):''});
 }
 const timers={};
 async function saveNote(k){
@@ -104,7 +107,10 @@ async function saveNote(k){
   catch(e){ setStatus(e&&e.code==='not_granted'||e&&(e.code==='permission_denied'||e.code==='permission-denied')?'Lecture seule : demandez un accès à l\'administratrice pour modifier':'Non enregistré, réessayez'); }
 }
 function setStatus(t){const el=document.getElementById('savestate'); if(el){el.textContent=t;clearTimeout(el._t);el._t=setTimeout(()=>el.textContent=DB?'Vendu et commentaires partagés avec l\'équipe':'',3000)}}
-document.addEventListener('change',e=>{const i=e.target;if(i.matches('input[type=checkbox][data-k]')){const k=i.dataset.k;const o=NOTES[k]||{};NOTES[k]={...o,vendu:i.checked,soldAt:i.checked?(o.soldAt||new Date().toISOString().slice(0,10)):o.soldAt};paint(k);saveNote(k);if(tab==='ventes')list();kpis();matrix();tabsUI()}});
+document.addEventListener('change',e=>{const i=e.target;if(i.matches('input[type=checkbox][data-k]')){const k=i.dataset.k;const o=NOTES[k]||{};NOTES[k]={...o,vendu:i.checked,soldAt:i.checked?(o.soldAt||new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'})):o.soldAt};paint(k);saveNote(k);if(tab==='ventes')list();kpis();matrix();tabsUI()}
+  // Date de vente (à côté de Vendu) : enregistrée seulement si l'auto est vendue et la date complète
+  if(i.matches('input[type=date][data-dk]')){const k=i.dataset.dk,o=NOTES[k]||{};if(!o.vendu||!/^20\d\d-\d\d-\d\d$/.test(i.value))return;NOTES[k]={...o,soldAt:i.value};paint(k);saveNote(k)}});
+document.addEventListener('focusout',e=>{const i=e.target;if(i.matches&&i.matches('input[type=date][data-dk]')){const n=NOTES[i.dataset.dk]||{};i.value=n.vendu?(n.soldAt||''):''}});
 document.addEventListener('input',e=>{const i=e.target;if(i.matches('input[type=text][data-k]')){const k=i.dataset.k;NOTES[k]={...(NOTES[k]||{}),comment:i.value};document.querySelectorAll(`input[type=text][data-k="${k}"]`).forEach(x=>{if(x!==i)x.value=i.value});clearTimeout(timers[k]);timers[k]=setTimeout(()=>saveNote(k),800)}});
 (async()=>{
   try{ DB=await window.claude?.use?.('db'); USER=await window.claude?.use?.('user'); }catch(e){DB=null}
@@ -201,8 +207,8 @@ function list(){
         g.sort((a,b)=>b.age-a.age);
         const avg=Math.round(g.reduce((s,v)=>s+v.age,0)/g.length);
         const sv=g.filter(isSold).length;meta=`${g.length-sv} en stock${sv?` (+ ${sv} vendu${sv>1?'s':''})`:''} · âge moyen ${avg} j · plus vieux ${g[0].age} j`;
-        head='<th>#</th><th>Version</th><th>Couleur ext. / int.</th><th>NIV</th><th>Stock</th><th class="num">Âge</th><th>Arrivé (facturé)</th><th>Statut</th>'+trackHead;
-        body=g.map((v,i)=>`<tr${rowAttr(v)}><td class="idx">${i+1}</td>${verCell(v)}<td class="mono">${esc(v.vin)}</td>${stockCell(v)}<td class="num"><span class="pill ${ageCls(v.age)}">${v.age} j</span></td><td class="mono">${fmtDY(iso(addD(TODAY,-v.age)))}</td><td>${statut(v)}${v.recall?' <span class="pill p-bad" title="Rappel ouvert">Rappel</span>':''}</td>${trackCells(v,'s')}</tr>`).join('');
+        head='<th>#</th><th>Version</th><th>Couleur ext. / int.</th><th>NIV</th><th>Stock</th><th class="num">Âge</th><th>Arrivé (facturé)</th><th>Statut</th>'+trackHeadD;
+        body=g.map((v,i)=>`<tr${rowAttr(v)}><td class="idx">${i+1}</td>${verCell(v)}<td class="mono">${esc(v.vin)}</td>${stockCell(v)}<td class="num"><span class="pill ${ageCls(v.age)}">${v.age} j</span></td><td class="mono">${fmtDY(iso(addD(TODAY,-v.age)))}</td><td>${statut(v)}${v.recall?' <span class="pill p-bad" title="Rappel ouvert">Rappel</span>':''}</td>${trackCells(v,'s',true)}</tr>`).join('');
       }
       sec+=`<section class="model"><div class="model-h"><h2>${esc(m)}</h2><span class="meta">${meta}</span></div><div class="tbl"><table class="veh"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></section>`;
     }

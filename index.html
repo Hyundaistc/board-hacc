@@ -91,7 +91,10 @@ input[type=search]{font:inherit;border:1px solid var(--line);background:var(--su
 .veh td.c-sold input{width:18px;height:18px;accent-color:var(--ok);cursor:pointer}
 .veh td.c-com{min-width:180px}
 .veh td.c-com input{font:inherit;font-size:.82rem;width:100%;min-width:160px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:5px 8px}
-.veh td.c-com input:focus-visible,.veh td.c-sold input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.veh th.c-date,.veh td.c-date{white-space:nowrap;width:1%;padding-left:6px;padding-right:6px}
+.veh td.c-date input{font:inherit;font-size:.8rem;width:116px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:4px 5px}
+.veh tr:not(.sold) td.c-date input{visibility:hidden}
+.veh td.c-com input:focus-visible,.veh td.c-sold input:focus-visible,.veh td.c-date input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .veh tr.sold td{background:var(--ok-bg)}
 .veh tr.sold td.c-com input{background:var(--surface)}
 .savestate{font-size:.78rem;color:var(--ok);min-height:1em}
@@ -172,7 +175,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='2';window.HACC_APP_SCRIPT='app.js';window.HACC_DB_PREFIX='';</script>
+<script>window.HACC_VERSION='3';window.HACC_APP_SCRIPT='app.js';window.HACC_DB_PREFIX='';</script>
 <script src="shim.js?v=2"></script>
 </head>
 <body>
