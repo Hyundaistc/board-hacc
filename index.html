@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Board HACC · Hyundai St-Constant</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a3a6b'/%3E%3Ctext x='16' y='22' font-size='16' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+[hidden]{display:none!important}
+/* Layout: en-tête compact → matrice modèles (filtre) → onglets Stock / Transit / Commandes → sections par modèle */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --fg:#14202e; --muted:#5d6b7c; --line:#dde3ea;
+  --accent:#0a3a6b; --accent-soft:#e3ecf6;
+  --ok:#1f7a4d; --ok-bg:#e2f3ea; --warn:#9a6a00; --warn-bg:#fbf0d4; --hot:#b4501a; --hot-bg:#fbe5d8; --bad:#b3261e; --bad-bg:#f9dedc; --liv:#0b57b8; --liv-bg:#cfe2fb;
+  --f-display:"Archivo",system-ui,sans-serif; --f-body:"Archivo",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e141c; --surface:#151e29; --fg:#e6ecf3; --muted:#93a1b2; --line:#263345;
+  --accent:#7fb2ea; --accent-soft:#1a2b40;
+  --ok:#6fd3a0; --ok-bg:#16301f; --warn:#e9c15e; --warn-bg:#33290f; --hot:#f2a172; --hot-bg:#3a2214; --bad:#f2938c; --bad-bg:#3d1a18; --liv:#8cc0ff; --liv-bg:#163556; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e141c; --surface:#151e29; --fg:#e6ecf3; --muted:#93a1b2; --line:#263345;
+  --accent:#7fb2ea; --accent-soft:#1a2b40;
+  --ok:#6fd3a0; --ok-bg:#16301f; --warn:#e9c15e; --warn-bg:#33290f; --hot:#f2a172; --hot-bg:#3a2214; --bad:#f2938c; --bad-bg:#3d1a18; --liv:#8cc0ff; --liv-bg:#163556; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:800;font-size:1.7rem;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:.85rem;margin-top:2px}
+.snap{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.kpi b{display:block;font-family:var(--f-display);font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi span{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.matrix-box{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+.matrix th,.matrix td{padding:7px 12px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.matrix th:first-child,.matrix td:first-child{text-align:left}
+.matrix thead th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line)}
+.matrix tbody tr{cursor:pointer;border-bottom:1px solid var(--line)}
+.matrix tbody tr:hover{background:var(--accent-soft)}
+.matrix tbody tr.sel{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.matrix tfoot td{font-weight:700;border-top:2px solid var(--line)}
+.matrix .z{color:var(--line)}
+.matrix td.old{color:var(--bad);font-weight:600}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px;flex-wrap:wrap}
+.tabs button{font:inherit;font-weight:600;border:0;background:transparent;color:var(--muted);padding:8px 14px;border-radius:6px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--surface)}
+.tabs button:focus-visible,.matrix tr:focus-visible,input:focus-visible,.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tabs .n{font-family:var(--f-mono);font-weight:500;opacity:.8;margin-left:6px}
+input[type=search]{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:8px;padding:9px 12px;min-width:0;width:280px;max-width:100%}
+.hint{font-size:.8rem;color:var(--muted)}
+.chip{font:inherit;font-size:.8rem;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:999px;padding:3px 10px;cursor:pointer}
+.model{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.model-h{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--line)}
+.model-h h2{font-family:var(--f-display);font-size:1.1rem;font-weight:700;margin:0;letter-spacing:.01em}
+.model-h .meta{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.veh th,.veh td{padding:7px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+.veh tr:last-child td{border-bottom:0}
+.veh th{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;white-space:nowrap;background:var(--bg)}
+.veh td{font-size:.84rem}
+.veh .ver{min-width:220px}
+.veh .ver small{display:block;color:var(--muted);font-size:.74rem}
+.mono{font-family:var(--f-mono);font-size:.78rem;white-space:nowrap}
+.num{text-align:right!important;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-warn{background:var(--warn-bg);color:var(--warn)}
+.p-hot{background:var(--hot-bg);color:var(--hot)} .p-bad{background:var(--bad-bg);color:var(--bad)}
+.p-n{background:var(--accent-soft);color:var(--accent)}
+.empty{padding:24px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:8px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.78rem;color:var(--muted)}
+
+.grp-row td{background:var(--bg);font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;cursor:default}
+.matrix tbody tr.grp-row{cursor:default}
+.matrix th.sep,.matrix td.sep{border-left:1px solid var(--line)}
+.matrix thead tr.top th{border-bottom:0;padding-bottom:0;text-align:center}
+.matrix td.hot{font-weight:700;color:var(--accent)}
+.sec-title{font-family:var(--f-display);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:6px}
+.veh tr.divider td{background:var(--bg);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:5px 12px}
+.veh td small{display:block;color:var(--muted);font-size:.74rem}
+.idx{color:var(--muted);font-variant-numeric:tabular-nums;width:1%}
+
+.veh th.c-sold,.veh td.c-sold{text-align:center;width:1%}
+.veh td.c-sold input{width:18px;height:18px;accent-color:var(--ok);cursor:pointer}
+.veh td.c-com{min-width:180px}
+.veh td.c-com input{font:inherit;font-size:.82rem;width:100%;min-width:160px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:5px 8px}
+.veh td.c-com input:focus-visible,.veh td.c-sold input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.veh tr.sold td{background:var(--ok-bg)}
+.veh tr.sold td.c-com input{background:var(--surface)}
+.savestate{font-size:.78rem;color:var(--ok);min-height:1em}
+.veh td.stk{font-weight:600;color:var(--accent)}
+.veh td.z{color:var(--muted)}
+.stocksrc{font-size:.78rem;color:var(--muted)}
+
+.vhead{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.vhead h2{font-family:var(--f-display);font-size:1.25rem;margin:0;margin-right:auto;text-transform:capitalize}
+.vhead label{font-size:.78rem;color:var(--muted);display:flex;gap:6px;align-items:center}
+.vhead select{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:5px 8px}
+.kpis.vk{grid-template-columns:repeat(6,minmax(0,1fr))}
+.kpi b small{font-size:.9rem;color:var(--muted);font-weight:500}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
+.vboards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.vbox{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:0}
+.vbox h3{margin:0 0 6px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.mini{width:100%;font-size:.84rem;font-variant-numeric:tabular-nums}.mini td,.mini th{padding:3px 4px}.mini th{font-size:.68rem;color:var(--muted);font-weight:600;text-align:left}
+.top{font-size:.62rem;font-weight:700;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 5px}
+.vi{font:inherit;font-size:.8rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:4px 6px;width:96px;max-width:100%}
+.vi.s{width:64px}.vi.b{width:120px;font-weight:600}.vi.l2{width:140px}input.vi.stkin{font-family:var(--f-mono);color:var(--accent);font-weight:600;text-align:left}input.vi.mono{font-family:var(--f-mono);text-align:left}
+.vi.t{width:96px}
+.calbtn{display:inline-block;font-size:.76rem;font-weight:600;color:var(--liv);background:var(--liv-bg);border-radius:6px;padding:4px 8px;text-decoration:none;white-space:nowrap}.calbtn.err{color:var(--bad);background:var(--bad-bg);border:0;cursor:pointer;font:inherit;font-size:.76rem;font-weight:600}.calbtn.done{color:var(--ok);background:var(--ok-bg)}.calbtn:focus-visible{outline:2px solid var(--accent)}
+.fimail{font-size:.78rem;color:var(--muted)}.fimail summary{cursor:pointer}.fim{display:flex;flex-direction:column;gap:6px;margin-top:6px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px}.fim label{display:flex;justify-content:space-between;gap:8px}.fim .vi.l{width:230px}
+input.vi.stkedit{width:84px;font-family:var(--f-mono);font-weight:600;color:var(--accent);background:transparent;border-color:transparent}input.vi.stkedit:hover,input.vi.stkedit:focus{border-color:var(--line);background:var(--surface)}
+input.vi.veredit{width:100%;min-width:200px;font-size:.84rem;background:transparent;border-color:transparent;padding:3px 4px;margin-left:-4px}input.vi.veredit:hover,input.vi.veredit:focus{border-color:var(--line);background:var(--surface)}input.vi.veredit:placeholder-shown{border-color:var(--warn);border-style:dashed}
+input.rdrcb{width:18px;height:18px;accent-color:var(--liv);cursor:pointer}
+.model.cx{border-color:var(--bad);opacity:.85}.model.cx .vi[data-f=front],.model.cx .vi[data-f=frontM],.model.cx .vi[data-f=back]{text-decoration:line-through;color:var(--muted)}
+.model.carry{border-color:var(--warn)}.vi.m{width:80px;text-align:right}.vi.l{width:170px}
+input.vi[type=date]{width:128px}
+.vi:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.vt td{white-space:nowrap;vertical-align:middle}.vt td.ver{white-space:normal;min-width:180px}
+.vt td.tot{font-weight:700}
+.vt tr.st-comptabilise td{background:var(--ok-bg)}.vt tr.st-commande td{background:var(--accent-soft)}.vt tr.st-dealer td{background:var(--warn-bg)}.vt tr.st-cancel td{background:var(--bad-bg);color:var(--muted)}.vt tr.st-cancel td b{text-decoration:line-through}
+.vt tr.livre:not(.st-cancel) td{background:var(--liv-bg)}
+.vt tr.livre:not(.st-cancel) td:first-child{box-shadow:inset 3px 0 0 var(--liv)}
+.vt tr.marjo:not(.st-cancel) td{background:var(--ok-bg)}
+.vt tr.marjo:not(.st-cancel) td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+.p-liv{background:var(--liv-bg);color:var(--liv)}
+.empty-row{padding:28px!important;text-align:center;color:var(--muted);white-space:normal!important}
+@media (max-width:900px){.kpis.vk{grid-template-columns:repeat(2,minmax(0,1fr))}.vboards{grid-template-columns:1fr}}
+.hacc{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.haccbtn{font:inherit;font-size:.8rem;font-weight:600;border:0;border-radius:6px;padding:7px 12px;background:var(--accent);color:var(--surface);cursor:pointer}.haccbtn:disabled{opacity:.6;cursor:wait}.haccbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}#haccmsg.bad{color:var(--bad)}
+footer{font-size:.78rem;color:var(--muted)}
+@media (max-width:640px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))} h1{font-size:1.35rem} input[type=search]{width:100%}}
+
+/* ---- Ajouts version GitHub Pages ---- */
+.topbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:var(--accent);color:#fff;padding:8px 16px;font-size:.82rem}
+:root[data-theme="dark"] .topbar{color:var(--bg)}
+.topbar b{font-family:var(--f-display);font-size:.95rem;letter-spacing:.02em}
+.topbar .r{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tb-btn{font:inherit;font-size:.78rem;font-weight:600;border:1px solid rgba(255,255,255,.5);background:transparent;color:inherit;border-radius:6px;padding:4px 10px;cursor:pointer}
+.gbanner{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;font-size:.85rem}
+.gate{min-height:100vh;display:grid;place-items:center;padding:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px;max-width:440px;width:100%;display:flex;flex-direction:column;gap:14px;text-align:center}
+.card h1{font-size:1.4rem}
+.card p{margin:0;color:var(--muted)}
+.gbtn{font:inherit;font-weight:700;border:0;border-radius:8px;padding:11px 16px;background:var(--accent);color:var(--surface);cursor:pointer}
+.err{color:var(--bad);font-size:.85rem;min-height:1em}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--fg);max-width:560px;width:calc(100% - 32px);padding:22px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h2{margin:0 0 10px;font-family:var(--f-display)}
+dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.bm{display:inline-block;font-weight:700;background:var(--accent);color:var(--surface);padding:8px 14px;border-radius:8px;text-decoration:none;cursor:grab}
+.adminbox{border-top:1px solid var(--line);margin-top:14px;padding-top:12px;font-size:.85rem;display:flex;flex-direction:column;gap:6px}
+
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>window.HACC_VERSION='1';</script>
+<script src="shim.js"></script>
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <div class="card">
+    <h1>Board HACC</h1>
+    <p>Hyundai St-Constant · inventaire, arrivages et ventes</p>
+    <div id="gate-login" hidden>
+      <button class="gbtn" id="btn-login" type="button">Se connecter avec Google</button>
+      <p style="margin-top:10px;font-size:.8rem">Utilisez votre compte @hyundaistconstant.com.</p>
+    </div>
+    <div id="gate-denied" hidden>
+      <p>Le compte <b id="denied-email"></b> n'a pas accès à ce board. Demandez à l'administratrice de vous ajouter.</p>
+      <button class="gbtn" id="btn-denied-out" type="button" style="margin-top:10px">Changer de compte</button>
+    </div>
+    <div id="gate-config" hidden><p>Configuration Firebase manquante : remplissez <code>firebase-config.js</code>.</p></div>
+    <div class="err" id="gate-err" role="alert"></div>
+  </div>
+</div>
+
+<div id="appwrap" hidden>
+  <div class="topbar">
+    <b>Hyundai St-Constant · Board HACC</b>
+    <div class="r"><span id="who"></span><button class="tb-btn" id="btn-logout" type="button">Déconnexion</button></div>
+  </div>
+  <div class="wrap" style="padding-bottom:0">
+    <div class="gbanner" id="gbanner" hidden>
+      <span>Connectez Google pour les numéros de stock (Drive), la copie vers Google Sheets et les livraisons dans Google Agenda.</span>
+      <button class="haccbtn" id="btn-google" type="button">Connecter Google</button>
+    </div>
+  </div>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Inventaire HACC · B06AA31052</h1>
+      <div class="sub">Ce qui arrive en inventaire et quand, par modèle · portail des ventes HACC (SAP)</div>
+    </div>
+    <div class="hacc"><div class="snap" id="snap"></div><button id="haccbtn" class="haccbtn" type="button" title="Ouvre salesportal-hacc · liste de stock du concessionnaire">Mettre à jour depuis HACC</button></div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Totaux"></section>
+
+  <div class="sec-title">Arrivages par modèle · cliquez une ligne pour voir le détail</div>
+  <section class="matrix-box" aria-label="Arrivages par modèle">
+    <table class="matrix" id="matrix"></table>
+  </section>
+
+  <div class="controls">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <input type="search" id="q" placeholder="Rechercher NIV, no. stock, version, couleur…" aria-label="Rechercher">
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="savestate" id="savestate" role="status"></div>
+  <div class="stocksrc" id="stocksrc"></div>
+  <div class="stocksrc" id="sheetsrc"></div>
+  <div class="stocksrc" id="boardsrc"></div>
+  <div class="stocksrc" id="haccmsg" role="status"></div>
+
+  <main id="list" style="display:flex;flex-direction:column;gap:14px"></main>
+
+  <div class="sec-title" id="a-venir">Liste complète des arrivages</div>
+  <section class="model" id="incoming"></section>
+
+  <footer>Pour rafraîchir l'inventaire, cliquez « Mettre à jour depuis HACC ». Le stock inclut démos, courtoisies, unités vendues non livrées et véhicules d'occasion au nom du concessionnaire. Les commandes DVOS n'ont pas d'ETA tant qu'elles ne sont pas produites.</footer>
+</div>
+</div>
+
+<dialog id="haccdlg" aria-labelledby="dlgt">
+  <h2 id="dlgt">Mettre à jour depuis HACC</h2>
+  <p class="hint">À installer une seule fois : glissez ce bouton dans votre barre de favoris.</p>
+  <p><a class="bm" id="bm-link" href="#">⟳ Board HACC</a></p>
+  <ol>
+    <li>Ouvrez le portail HACC et connectez-vous (<a href="https://salesportal-hacc.am.hyundai-corp.io/salesportal/index.html#/dealerstocklist" target="_blank" rel="noopener">liste de stock</a>).</li>
+    <li>Cliquez le favori <b>⟳ Board HACC</b> pendant que vous êtes sur le portail.</li>
+    <li>Le board s'ouvre et l'inventaire se met à jour pour toute l'équipe.</li>
+  </ol>
+  <div class="adminbox" id="adminbox" hidden>
+    <b>Importer un fichier d'inventaire (.json)</b>
+    <input type="file" id="importfile" accept=".json,application/json">
+    <span class="hint" id="importmsg" role="status"></span>
+  </div>
+  <p style="text-align:right;margin:14px 0 0"><button class="haccbtn" id="dlg-close" type="button">Fermer</button></p>
+</dialog>
+
+<script type="text/plain" id="bm-src">var APP='__APP__';
+var HO='https://salesportal-hacc.am.hyundai-corp.io';
+if(location.origin!==HO){alert('Ouvrez d\'abord le portail HACC (liste de stock), puis cliquez ce favori.');return;}
+var w=window.open(APP+'#import','hacc_board');
+var AO=new URL(APP).origin;
+var SEL_L=['ZZLCAR_TXT','ZZMDYEAR','LSCCD_TXT','ZZEXTCL_TXT','ZZINTCL_TXT','VHVIN','ZODRNO','VBELN','LOCTNT','LGORTX','ZZETADT','AGING_DAYS','SOLD_STATUS','ZDEMO','ZPMON','RECALL_CNT','ZHOLDBAK'];
+var SEL_O=['ZZLCAR_TXT','ZZMDYEAR','LSCCD_TXT','ZZEXTCL_TXT','ZZINTCL_TXT','ZODRNO','ZODRTYP_DESC','ZPMON'];
+function u(dt,loc,ex){return HO+'/sap/opu/odata/sap/ZGWSDD77120_SRV/ZGWSDD77120_I_DATASet?sap-language=en&menu=dealerstocklist&rfc=ZFSDD_DP_LIST_DEALER_STK_DT&'+(dt==='S'?'$expand=T_ORDERS&$select='+SEL_O.map(function(f){return 'T_ORDERS/'+f}).join(','):'$expand=T_LIST&$select='+SEL_L.map(function(f){return 'T_LIST/'+f}).join(','))+"&$format=json&$filter=I_BUKRS%20eq%20%271300%27%20and%20I_LANGU%20eq%20%27FR%27%20and%20I_DEALER%20eq%20%27B06AA31052%27%20and%20I_MDYEAR%20eq%20%27%27%20and%20I_VHVIN%20eq%20%27%27%20and%20I_MODEL%20eq%20%27%27%20and%20I_USAGE%20eq%20%27%27%20and%20I_LOCATION%20eq%20%27"+loc+"%27%20and%20I_HOLDBACK_FLG%20eq%20%27%27%20and%20I_UNSOLD%20eq%20%27%27%20and%20I_DTYPE%20eq%20%27"+dt+"%27"+(ex?'%20and%20I_AGING_RNG%20eq%20%27%27%20and%20I_LSCCD%20eq%20%27%27%20and%20I_TRIM%20eq%20%27%27%20and%20I_EXCOL%20eq%20%27%27%20and%20I_INCOL%20eq%20%27%27':'');}
+var L5='220000000_230114000_270114001_230114500_230110000';
+var P=[['D','',false,'T_LIST'],['I',L5,true,'T_LIST'],['O',L5,true,'T_LIST'],['S',L5,true,'T_ORDERS']];
+function t(v){return (v==null||v==='0000-00-00')?'':String(v).trim();}
+function row(g,x){return [g,t(x.ZZLCAR_TXT),t(x.ZZMDYEAR),t(x.LSCCD_TXT),t(x.ZZEXTCL_TXT),t(x.ZZINTCL_TXT),t(x.VHVIN),t(x.ZODRNO||x.VBELN),t(x.LOCTNT||x.ZODRTYP_DESC),t(x.LGORTX),t(x.ZZETADT),t(x.AGING_DAYS),t(x.SOLD_STATUS),t(x.ZDEMO),t(x.ZPMON)==='000000'?'':t(x.ZPMON),t(x.RECALL_CNT),t(x.ZHOLDBAK)];}
+Promise.all(P.map(function(p){return fetch(u(p[0],p[1],p[2]),{credentials:'include',headers:{Accept:'application/json'}}).then(function(r){if(!r.ok)throw new Error('HACC a répondu '+r.status);return r.json();}).then(function(j){var d=j.d.results[0];return (d[p[3]]&&d[p[3]].results)||[];});})).then(function(g){
+  var G={D:'D',I:'T',O:'O',S:'S'},rows=[];
+  P.forEach(function(p,i){g[i].forEach(function(x){rows.push(row(G[p[0]],x));});});
+  if(rows.length<20)throw new Error('trop peu de véhicules reçus ('+rows.length+')');
+  var msg={type:'hacc-board-seed',id:String(Date.now()),date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'}),rows:rows};
+  var n=0,iv=setInterval(function(){if(n++>300){clearInterval(iv);return;}try{w.postMessage(msg,AO);}catch(e){}},1000);
+  window.addEventListener('message',function(e){if(e.origin!==AO||!e.data)return;if(e.data.type==='hacc-board-ready'){try{w.postMessage(msg,AO);}catch(x){}}if(e.data.type==='hacc-board-ack'){clearInterval(iv);alert((e.data.ok?'✓ ':'✗ ')+e.data.msg);}});
+}).catch(function(e){alert('Lecture HACC impossible : '+e.message+'\nVérifiez que vous êtes connecté(e) au portail HACC.');});
+</script>
+</body>
+</html>

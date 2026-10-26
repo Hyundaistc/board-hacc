@@ -1,0 +1,21 @@
+rules_version = '2';
+// Règles de sécurité du Board HACC — à coller dans Firebase → Firestore → Règles.
+// Accès : comptes @hyundaistconstant.com + adresses listées dans la collection « membres ».
+// Admins (liste ci-dessous) : inventaire HACC, numéros de stock, gestion des membres.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function email() { return request.auth.token.email.lower(); }
+    function isAdmin() { return signedIn() && email() in ['melanie@hyundaistconstant.com']; }
+    function isStaff() {
+      return signedIn() && (email().matches('.*@hyundaistconstant[.]com$')
+        || exists(/databases/$(database)/documents/membres/$(email())));
+    }
+
+    match /suivi/{id}      { allow read, write: if isStaff(); }
+    match /config/{id}     { allow read: if isStaff();
+                             allow write: if (id != 'stock' && isStaff()) || isAdmin(); }
+    match /inventaire/{id} { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /membres/{id}    { allow read: if isStaff(); allow write: if isAdmin(); }
+  }
+}
