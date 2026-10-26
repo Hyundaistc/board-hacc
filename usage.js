@@ -11,7 +11,7 @@ const keyOf=r=>'S-'+normName(r.stock);
 const todayTO=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'});
 const fmtAt=at=>{const d=new Date(at);return d.toLocaleDateString('fr-CA',{timeZone:'America/Toronto',day:'numeric',month:'long',year:'numeric'})+' à '+d.toLocaleTimeString('fr-CA',{timeZone:'America/Toronto',hour:'2-digit',minute:'2-digit'})};
 let COUTS=null, COUT_SRC='', PRETS={rows:[]}, NOTES={}, CFG={objectif:50,objMoy:1800}, DB=null, USER=null, MCP=null, CAN_EDIT=false;
-let tab='inv', filt='tous', q='', sortK='days', sortDir=-1, VMONTH=todayTO().slice(0,7);
+let tab=location.hash==='#ventes'?'ventes':'inv', filt='tous', q='', sortK='days', sortDir=-1, VMONTH=todayTO().slice(0,7);
 
 function setSnap(){document.getElementById('snap').textContent=INV.length?'Inventaire D2C mis à jour le '+fmtAt(INV_AT):'Inventaire D2C : en attente des données'}
 const isSold=r=>!!(NOTES[keyOf(r)]&&NOTES[keyOf(r)].vendu);
