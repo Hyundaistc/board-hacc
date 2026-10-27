@@ -39,7 +39,7 @@
   ];
 
   // ---------- Données : mêmes sources et mêmes règles que les inventaires ----------
-  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, err: false };
+  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, csi: undefined, err: false };
   const lireInv = s => { const x = s && s.exists ? (s.data() || {}) : {}; let rows = null; try { rows = JSON.parse(x.json || 'null'); } catch (e) {} return { rows: Array.isArray(rows) ? rows : [], date: x.date || '', at: x.at || '' }; };
   const lireCol = s => { const m = {}; s.docs.forEach(d => { m[d.id] = d.data() || {}; }); return m; };
   const surErreur = () => { D.err = true; peindre(); };
@@ -50,6 +50,7 @@
     DB.doc('usage_inventaire/actuel').onSnapshot(s => { const r = lireInv(s); D.uinv = r.rows; D.uinvAt = r.at; peindre(); }, surErreur);
     DB.collection('usage_suivi').onSnapshot(s => { D.usuivi = lireCol(s); peindre(); }, surErreur);
     DB.doc('usage_config/ventes').onSnapshot(s => { D.cfgU = s.exists ? (s.data() || {}) : {}; peindre(); }, surErreur);
+    DB.doc('config/csi').onSnapshot(s => { D.csi = s.exists ? (s.data() || {}) : null; peindre(); }, () => { D.csi = null; peindre(); });
   }
 
   function chiffres() {
@@ -61,11 +62,7 @@
       const vendu = r => !!(D.suivi[cle(r)] && D.suivi[cle(r)].vendu);
       const stock = D.inv.filter(r => r[0] === 'D');
       c.nDispo = stock.filter(r => !vendu(r)).length; c.nRetires = stock.length - c.nDispo;
-      // « Arrivent cette semaine » : ETA jusqu'au dimanche de la semaine des données HACC (comme l'inventaire neuf)
-      const snap = D.invDate || todayTO(), jour = new Date(snap + 'T00:00:00'), fin = new Date(jour);
-      fin.setDate(jour.getDate() - ((jour.getDay() + 6) % 7) + 6);
-      const finIso = fin.toISOString().slice(0, 10);
-      c.nArr = D.inv.filter(r => r[0] === 'T' && r[10] && r[10] <= finIso).length;
+      const snap = D.invDate || todayTO();
       c.nVentes = Object.values(D.suivi).filter(n => n && n.vendu && (n.soldAt || snap).slice(0, 7) === mois && active(n)).length;
     }
     if (D.uinv && D.usuivi) {
@@ -82,6 +79,15 @@
 
   // ---------- Vues ----------
   const tuile = (href, k, val, sous, barre = '') => `<a class="stat" href="${href}"><span class="k">${k}</span><b>${val}</b><span class="s">${sous}</span>${barre}</a>`;
+  // CSI (BoostCX) : NPS du mois à date, ventes et service
+  const f1 = v => Number(v).toLocaleString('fr-CA', { maximumFractionDigits: 1 });
+  function tuileCsi(t, moisNom) {
+    const m = D.csi, sc = m && m.scores && m.scores.MTD && m.scores.MTD[t], mo = m && /^\d{4}-\d{2}$/.test(m.mois || '') ? MOIS[+m.mois.slice(5) - 1] : moisNom;
+    const k = 'CSI ' + (t === 'ventes' ? 'ventes' : 'service') + ' · ' + mo;
+    if (!sc || sc.score == null) return tuile('#/csi/' + t, k, D.csi === undefined ? '…' : '—', D.csi === undefined ? 'NPS du mois' : 'NPS · à importer depuis BoostCX');
+    const e = sc.ecart, ec = e == null ? '' : `<em class="${e >= 0 ? 'ok' : 'bad'}">${e >= 0 ? '+' : '−'}${f1(Math.abs(e))} pts vs cible</em>`;
+    return tuile('#/csi/' + t, k, f1(sc.score), ['NPS', ec, sc.sondages != null ? pluriel(sc.sondages, 'sondage', 'sondages') : ''].filter(Boolean).join(' · '));
+  }
   function peindre() {
     const el = $('stats'); if (!el) return;
     const c = chiffres(), moisNom = MOIS[+todayTO().slice(5, 7) - 1];
@@ -92,11 +98,11 @@
     const pN = pct(c.nVentes, c.objN), pU = pct(c.uVentes, c.objU);
     el.innerHTML = [
       tuile('neuf.html#stock', 'Neuf en stock', v(c.nDispo), c.nRetires ? 'disponibles · ' + pluriel(c.nRetires, 'vendu retiré', 'vendus retirés') : 'disponibles'),
-      tuile('neuf.html#arrivages', 'Arrivent cette semaine', v(c.nArr), 'autos neuves en transit'),
       tuile('neuf.html#ventes', 'Ventes neuf · ' + moisNom, v(c.nVentes) + obj(c.nVentes, c.objN), pN == null ? 'ce mois-ci' : pN + ' % de l\'objectif', barre(pN)),
-      tuile('usage.html', 'Usagé en stock', v(c.uDispo), c.uLigne != null ? 'disponibles · ' + nb(c.uLigne) + ' en ligne' : 'disponibles'),
-      tuile('usage.html', 'Plus de 60 jours', v(c.u60), c.uDispo != null ? 'usagés · sur ' + nb(c.uDispo) + ' en stock' : 'usagés en stock'),
-      tuile('usage.html#ventes', 'Ventes usagé · ' + moisNom, v(c.uVentes) + obj(c.uVentes, c.objU), pU == null ? 'ce mois-ci' : pU + ' % de l\'objectif', barre(pU))
+      tuileCsi('ventes', moisNom),
+      tuile('usage.html', 'Usagé en stock', v(c.uDispo), c.uLigne != null ? 'disponibles · ' + nb(c.uLigne) + ' en ligne · ' + nb(c.u60) + ' de plus de 60 j' : 'disponibles'),
+      tuile('usage.html#ventes', 'Ventes usagé · ' + moisNom, v(c.uVentes) + obj(c.uVentes, c.objU), pU == null ? 'ce mois-ci' : pU + ' % de l\'objectif', barre(pU)),
+      tuileCsi('service', moisNom)
     ].join('');
     const maj = $('maj');
     if (maj) maj.textContent = [D.invAt && 'Neuf : HACC du ' + quand(D.invAt), D.uinvAt && 'Usagé : D2C du ' + quand(D.uinvAt)].filter(Boolean).join(' · ');
@@ -114,8 +120,26 @@
   }
   const vueAVenir = s => () => `<section class="hello"><h1>${esc(s.titre)}</h1><p>Hyundai St-Constant · section en préparation</p></section>
     <section class="pan prep"><span class="ic">${s.svg}</span><h2>Cette section arrive bientôt</h2><p>Elle apparaîtra ici dès qu'elle sera prête. En attendant, les inventaires et les ventes sont dans le menu de gauche.</p><a class="btn" href="#/accueil">Retour à l'accueil</a></section>`;
-  const VUES = { accueil: vueAccueil };
+  const VUES = { accueil: vueAccueil }, APRES = {};
   SECTIONS.filter(s => s.id).forEach(s => { VUES[s.id] = vueAVenir(s); });
+  let vueActive = 'accueil';
+
+  // ---------- Modules de section (un fichier par section : csi.js, …) ----------
+  // Un module appelle HSC.section('id', { sous, vue, apres }) : sa vue remplace « à venir » dans le menu et l'accueil.
+  window.HSC = {
+    DB, USER, courriel, prenom, esc, nb, quand, todayTO, TZ, MOIS, $,
+    estAdmin: () => !!(USER && USER.canEdit()),
+    vue: () => vueActive,
+    section(id, def) {
+      const s = SECTIONS.find(x => x.id === id); if (!s) return;
+      s.aVenir = false; if (def.sous) s.sous = def.sous;
+      VUES[id] = def.vue; if (def.apres) APRES[id] = def.apres;
+      const pastille = document.querySelector(`.nav-i[data-route="${id}"] .soon`); if (pastille) pastille.remove();
+    },
+    rafraichir: () => route(false)
+  };
+  const MODULES = ['csi.js'];
+  await Promise.all(MODULES.map(f => new Promise(ok => { const s = document.createElement('script'); s.src = f + '?v=' + (window.HACC_VERSION || '1'); s.onload = s.onerror = ok; document.head.appendChild(s); })));
 
   // ---------- Navigation ----------
   const shell = $('appwrap'), menuBtn = $('menu-btn');
@@ -132,11 +156,12 @@
   function route(focus) {
     const id = (location.hash.match(/^#\/([\w-]+)/) || [])[1];
     const vue = VUES[id] ? id : 'accueil';
+    vueActive = vue;
     document.querySelectorAll('.nav-i[data-route]').forEach(a => { if (a.dataset.route === vue) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     $('vue').innerHTML = VUES[vue]();
     const s = SECTIONS.find(x => x.id === vue);
     document.title = (s ? s.titre : 'Accueil') + ' · Hyundai St-Constant';
-    peindre(); menu(false);
+    peindre(); if (APRES[vue]) APRES[vue](); menu(false);
     if (focus) { window.scrollTo(0, 0); $('vue').focus({ preventScroll: true }); }
   }
   window.addEventListener('hashchange', () => route(true));

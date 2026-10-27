@@ -87,6 +87,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .stat b{font-family:var(--f-display);font-size:1.75rem;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
 .stat b small{font-size:.95rem;font-weight:500;color:var(--muted)}
 .stat .s{font-size:.78rem;color:var(--muted)}
+.stat .s em{font-style:normal;font-weight:600}
 .bar{height:6px;margin-top:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--ok)}
 .links{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
@@ -103,6 +104,73 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .prep h2{margin:6px 0 0;font-family:var(--f-display);font-size:1.15rem}
 .prep p{margin:0;color:var(--muted);max-width:440px}
 .btn{display:inline-flex;align-items:center;gap:8px;margin-top:8px;border:0;border-radius:8px;padding:9px 14px;background:var(--accent);color:var(--surface);font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+
+/* ---- Sections : CSI ---- */
+.outils{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.outils .meta,.pan-h h2 .meta{font-size:.76rem;font-weight:500;color:var(--muted)}
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:9px}
+.seg button{font:inherit;font-size:.82rem;font-weight:600;border:0;border-radius:7px;padding:6px 12px;background:none;color:var(--muted);cursor:pointer}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--surface)}
+.tabs{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:9px}
+.tabs button{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:700;border:0;border-radius:7px;padding:8px 18px;background:none;color:var(--muted);cursor:pointer}
+.tabs button:hover{color:var(--fg)}
+.tabs button[aria-selected=true]{background:var(--accent);color:var(--surface)}
+.tabs .n{font-family:var(--f-mono);font-size:.76rem;font-weight:500;opacity:.85}
+#csi-maj{margin:-8px 0 0;font-size:.76rem;color:var(--muted)}
+.btn2{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:7px 12px;background:var(--surface);color:var(--fg);font:inherit;font-size:.84rem;font-weight:600;text-decoration:none;cursor:pointer}
+.btn2:hover{border-color:var(--accent)}
+.btn2.prim{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.csi{display:flex;flex-direction:column;gap:18px}
+.scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.sc{display:flex;flex-direction:column;gap:6px;min-width:0;padding:12px 14px;border:1px solid var(--line);border-radius:8px}
+.sc.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.sc .k{font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.sc .s{font-size:.76rem;color:var(--muted)}
+.sc-l{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.big{font-family:var(--f-display);font-size:2rem;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.cmp{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:.78rem;color:var(--muted)}
+.cmp b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.ppd{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line);margin-top:2px}
+.ppd i{display:block;height:100%}.ppd .p{background:var(--ok)}.ppd .n{background:#d4a72c}.ppd .d{background:var(--bad)}
+.ppd-l{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:.72rem;color:var(--muted)}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)}.p-bad{background:var(--bad-bg);color:var(--bad)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-z{background:var(--bg);color:var(--muted)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.kpis-l{display:flex;flex-direction:column;gap:9px}
+.kr{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,200px) 64px 110px;gap:10px;align-items:center}
+.kr .nm{font-size:.86rem;min-width:0}
+.kr .nm small{display:block;color:var(--muted);font-size:.72rem}
+.kb{position:relative;height:8px;border-radius:4px;background:var(--line)}
+.kb i{position:absolute;inset:0 auto 0 0;border-radius:4px;background:var(--ok)}
+.kb i.bas{background:var(--bad)}
+.kb u{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--fg);text-decoration:none}
+.kr .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.kr .c{font-size:.74rem;color:var(--muted);display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
+.kr .c em{font-style:normal;font-weight:600}
+.tbl{overflow-x:auto}
+table.t{border-collapse:collapse;width:100%;font-size:.84rem}
+.t th{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;white-space:nowrap;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
+.t td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.t tr:last-child td{border-bottom:0}
+.t .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.t td small{display:block;color:var(--muted);font-size:.74rem}
+.t tr.alerte td{background:var(--bad-bg)}
+.t .com{min-width:220px;max-width:460px}
+.t .com .frft{margin-top:4px;color:var(--warn)}
+.mono{font-family:var(--f-mono);font-size:.78rem;white-space:nowrap}
+.note{display:inline-grid;place-items:center;min-width:28px;height:24px;padding:0 6px;border-radius:6px;font-weight:700;font-size:.8rem}
+.note.p{background:var(--ok-bg);color:var(--ok)}.note.n{background:var(--warn-bg);color:var(--warn)}.note.d{background:var(--bad-bg);color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{font:inherit;font-size:.8rem;border:1px solid var(--line);color:var(--muted);background:var(--surface);border-radius:999px;padding:4px 12px;cursor:pointer}
+.chip[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:600}
+.recherche{font:inherit;font-size:.84rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:8px;padding:7px 10px;width:280px;max-width:100%}
+.vide{margin:0;padding:18px;text-align:center;color:var(--muted)}
+.plus{margin:12px 0 0;text-align:center}
+.bm{display:inline-block;font-weight:700;background:#0a3a6b;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;cursor:grab}
+dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
+@media (max-width:700px){.kr{grid-template-columns:minmax(0,1fr) 64px}.kr .kb,.kr .c{grid-column:1/-1}.kr .c{justify-content:flex-start}}
 
 /* ---- Téléphone / tablette : le menu glisse depuis la gauche ---- */
 @media (max-width:860px){
@@ -146,7 +214,7 @@ dialog h2{margin:0 0 10px;font-family:var(--f-display)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='1';window.HACC_APP_SCRIPT='accueil.js';window.HACC_DB_PREFIX='';</script>
+<script>window.HACC_VERSION='2';window.HACC_APP_SCRIPT='accueil.js';window.HACC_DB_PREFIX='';</script>
 <script src="shim.js?v=2"></script>
 </head>
 <body>
@@ -206,6 +274,18 @@ dialog h2{margin:0 0 10px;font-family:var(--f-display)}
   <input type="file" id="importfile" accept=".json,application/json" hidden>
   <span class="hint" id="importmsg" role="status"></span>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="dlg-close" type="button">Fermer</button></p>
+</dialog>
+
+<dialog id="csidlg" aria-labelledby="csit">
+  <h2 id="csit">Mettre à jour le CSI depuis BoostCX</h2>
+  <p class="hint">À installer une seule fois : glissez ce bouton dans votre barre de favoris.</p>
+  <p><a class="bm" id="bm-csi" href="#">⟳ CSI BoostCX</a></p>
+  <ol>
+    <li>Ouvrez <a href="https://hacc.boostcx.com/bcx/dashboard/combined" target="_blank" rel="noopener">BoostCX</a> et connectez-vous (tableau de bord « Combined Performance »).</li>
+    <li>Cliquez le favori <b>⟳ CSI BoostCX</b> pendant que vous êtes sur BoostCX.</li>
+    <li>Les scores, les questions clés, FRFT et les sondages des 12 derniers mois arrivent ici pour toute l'équipe (environ une minute ; gardez BoostCX ouvert jusqu'au message vert).</li>
+  </ol>
+  <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="csidlg-close" type="button">Fermer</button></p>
 </dialog>
 
 <dialog id="memdlg" aria-labelledby="memt">

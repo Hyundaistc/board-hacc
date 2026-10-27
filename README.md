@@ -1,6 +1,6 @@
 # Board HACC · Hyundai St-Constant
 
-Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux deux inventaires : **Inventaire neuf** (board HACC : stock, arrivages, commandes, ventes neuf) et **Inventaire usagé** (D2C : occasions, coûtants, ventes usagés). Les sections CSI, Comeback et Évaluation sont prévues dans le menu.
+Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux deux inventaires : **Inventaire neuf** (board HACC : stock, arrivages, commandes, ventes neuf) et **Inventaire usagé** (D2C : occasions, coûtants, ventes usagés). La section CSI lit BoostCX ; Comeback et Évaluation sont prévues dans le menu.
 
 **Accès privé, sur invitation** : l'admin invite chaque personne via « Gérer les accès ».
 
@@ -14,6 +14,7 @@ Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux deux i
 | Fichier | Rôle |
 |---|---|
 | `index.html` / `accueil.js` | Page d'accueil : menu des sections, accueil personnalisé, chiffres clés (renvoie les anciens liens `#import`, `#stock`… vers `neuf.html`) |
+| `csi.js` | Section CSI (onglets Ventes et Service) : scores NPS, FRFT, Effective Records Rate, questions clés, par conseiller, sondages ; favori « ⟳ CSI BoostCX » (bouton « Mettre à jour depuis BoostCX ») qui lit BoostCX et enregistre dans `config/csi*` |
 | `neuf.html` | Inventaire neuf (HACC) |
 | `usage.html` / `usage.js` | Inventaire usagé (D2C) |
 | `app.js` | Logique du board (stock, arrivages, ventes) |
