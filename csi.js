@@ -136,7 +136,7 @@
     const c = sc.combine, comb = c && c.score != null ? `<p class="hint">NPS combiné (ventes + service) : <b>${f1(c.score)}</b>${c.ecart != null ? ' · ' + signe(c.ecart) + ' pts ' + (c.ecart >= 0 ? 'au-dessus de' : 'sous') + ' la cible' : ''}</p>` : '';
     el.innerHTML = `${S.err ? `<p class="err">${esc(S.err)}</p>` : ''}
       <section class="pan"><div class="pan-h"><h2>${T === 'ventes' ? 'Ventes' : 'Service'} <span class="meta">${esc(perNom)}</span></h2></div><div class="scores">${cartes}</div>${comb}</section>
-      <section class="pan"><div class="pan-h"><h2>Questions clés <span class="meta">${esc(perNom)}</span></h2></div>${kpis(kp[T])}</section>
+      <section class="pan"><div class="pan-h"><h2>Questions clés <span class="meta">${esc(perNom)}</span></h2></div>${kpis((kp[T] || []).slice(0, 5))}</section>
       <section class="pan">${personnes(dans, perNom)}</section>
       <section class="pan">${sondages(dans, perNom)}</section>`;
   }
