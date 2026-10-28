@@ -113,7 +113,8 @@ input[type=search]{font:inherit;border:1px solid var(--line);background:var(--su
 .vbox{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:0}
 .vbox h3{margin:0 0 6px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .mini{width:100%;font-size:.84rem;font-variant-numeric:tabular-nums}.mini td,.mini th{padding:3px 4px}.mini th{font-size:.68rem;color:var(--muted);font-weight:600;text-align:left}
-.top{font-size:.62rem;font-weight:700;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 5px}
+.top{font-size:.62rem;font-weight:700;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 5px;white-space:nowrap}
+.top.top-m{background:var(--ok-bg);color:var(--ok)} /* TOP 1 en argent (meilleure moyenne) */
 .vi{font:inherit;font-size:.8rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:4px 6px;width:96px;max-width:100%}
 .vi.s{width:64px}.vi.b{width:120px;font-weight:600}.vi.l2{width:140px}input.vi.stkin{font-family:var(--f-mono);color:var(--accent);font-weight:600;text-align:left}input.vi.mono{font-family:var(--f-mono);text-align:left}
 .vi.t{width:96px}
@@ -202,7 +203,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
 <script>window.HACC_VERSION='5';window.HACC_APP_SCRIPT='app.js';window.HACC_DB_PREFIX='';</script>
-<script src="shim.js?v=2"></script>
+<script src="shim.js?v=3"></script>
 </head>
 <body>
 <div id="gate" class="gate">

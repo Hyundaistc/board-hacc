@@ -103,7 +103,9 @@ function ventesSummary(){
   const tf=fr.reduce((a,b)=>a+b,0),tb=bk.reduce((a,b)=>a+b,0);
   const group=f=>{const m={};scope.forEach(x=>{const ns=canonNom(x.n.vente?.[f]).toUpperCase().split(/[-\/]/).map(s=>s.trim()).filter(Boolean);const w=ns.length?1/ns.length:0;ns.forEach(nm=>{m[nm]=m[nm]||{d:0,f:0,b:0};m[nm].d+=w;m[nm].f+=effF(x.n.vente||{})*w;m[nm].b+=num(x.n.vente?.back)*w})});return Object.entries(m).sort((a,b)=>b[1].d-a[1].d)};
   const fd=d=>Number.isInteger(d)?d:d.toFixed(1);
-  const board=(t,l,c,lab)=>`<div class="vbox"><h3>${t}</h3>${l.length?`<table class="mini"><tr><th></th><th class="num">Deals</th><th class="num">${lab}</th></tr>${l.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${fd(x.d)}</td><td class="num">${x.d?money(x[c]/x.d):'—'}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore.</p>'}</div>`;
+  // TOP 1 = le plus de deals (à côté du nom) ; TOP 1 en argent = la meilleure moyenne (à côté du montant)
+  const board=(t,l,c,lab)=>{let bi=-1,bv=-Infinity;l.forEach(([,x],i)=>{if(x.d&&x[c]/x.d>bv){bv=x[c]/x.d;bi=i}});
+    return `<div class="vbox"><h3>${t}</h3>${l.length?`<table class="mini"><tr><th></th><th class="num">Deals</th><th class="num">${lab}</th></tr>${l.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top" title="Le plus de deals">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${fd(x.d)}</td><td class="num">${i===bi?'<span class="top top-m" title="Meilleure moyenne">TOP 1 $</span> ':''}${x.d?money(x[c]/x.d):'—'}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore.</p>'}</div>`};
   el.innerHTML=`<div class="kpis"><div class="kpi"><b>${month.length}<small> / ${obj||'—'}</small></b><span>Vendus ce mois · ${pct}% · + ${carry.length} carry over</span><div class="bar"><i style="width:${Math.min(100,pct)}%"></i></div></div>
   <div class="kpi"><b>${livre}</b><span>Livrés ce mois</span></div>
   <div class="kpi"><b>${fr.length?money(tf/fr.length):'—'}</b><span>Moyenne front · obj. ${money(num(CFG.objMoy))}</span></div>

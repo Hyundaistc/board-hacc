@@ -282,7 +282,10 @@ function ventesSummary(){
   const group=(f)=>{const m={};live.forEach(r=>{const x=r.n.vente||{};const names=canonNom(x[f]).toUpperCase().split(/[-\/]/).map(z=>z.trim()).filter(Boolean);const w=names.length?1/names.length:0;names.forEach(nm=>{m[nm]=m[nm]||{d:0,fm:0,fc:0,b:0,bc:0};m[nm].d+=w;if(hasFM(x)){m[nm].fm+=num(x.frontM)*w;m[nm].fc+=w}if(num(x.back)){m[nm].b+=num(x.back)*w;m[nm].bc+=w}})});return Object.entries(m).sort((a,b)=>b[1].d-a[1].d)};
   const fmtD=d=>Number.isInteger(d)?d:d.toFixed(1);
   const avg=(x,col)=>col==='f'?(x.fc?money(x.fm/x.fc):'—'):(x.bc?money(x.b/x.bc):'—');
-  const board=(title,list,col,lab)=>`<div class="vbox"><h3>${title}</h3>${list.length?`<table class="mini"><tr><th></th><th class="num">Deals</th><th class="num">${lab}</th></tr>${list.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${fmtD(x.d)}</td><td class="num">${avg(x,col)}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore ce mois-ci.</p>'}</div>`;
+  // TOP 1 = le plus de deals (à côté du nom) ; TOP 1 en argent = la meilleure moyenne (à côté du montant)
+  const moy=(x,col)=>col==='f'?(x.fc?x.fm/x.fc:null):(x.bc?x.b/x.bc:null);
+  const board=(title,list,col,lab)=>{let bi=-1,bv=-Infinity;list.forEach(([,x],i)=>{const v=moy(x,col);if(v!=null&&v>bv){bv=v;bi=i}});
+    return `<div class="vbox"><h3>${title}</h3>${list.length?`<table class="mini"><tr><th></th><th class="num">Deals</th><th class="num">${lab}</th></tr>${list.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top" title="Le plus de deals">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${fmtD(x.d)}</td><td class="num">${i===bi?'<span class="top top-m" title="Meilleure moyenne">TOP 1 $</span> ':''}${avg(x,col)}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore ce mois-ci.</p>'}</div>`};
   el.innerHTML=`<div class="kpis vk">
     <div class="kpi"><b>${mrows.length}<small> / ${obj||'—'}</small></b><span>Vendus ce mois · objectif ${pct}% · + ${crows.length} carry over (total ${live.length})</span><div class="bar"><i style="width:${Math.min(100,pct)}%"></i></div></div>
     <div class="kpi"><b>${livre}</b><span>Livrés ce mois</span></div>

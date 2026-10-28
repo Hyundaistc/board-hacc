@@ -4,6 +4,8 @@
 (function () {
   'use strict';
   const HACC_ORIGIN = 'https://salesportal-hacc.am.hyundai-corp.io';
+  const D2C_ORIGIN = 'https://admin.d2cmedia.ca'; // favori « ⟳ Inventaire D2C » (inventaire usagé)
+  const SEED_ORIGINS = { [HACC_ORIGIN]: 'hacc-board-seed', [D2C_ORIGIN]: 'd2c-seed' };
   const SCOPES = [
     'https://www.googleapis.com/auth/drive.readonly',
     'https://www.googleapis.com/auth/spreadsheets',
@@ -149,13 +151,14 @@
   }
   const seenIds = new Set();
   window.addEventListener('message', async e => {
-    if (e.origin !== HACC_ORIGIN || !e.data || e.data.type !== 'hacc-board-seed') return;
-    if (!currentUser || !window.HACC_BOARD) return;          // pas encore prête : le favori réessaie
+    if (!e.data || !SEED_ORIGINS[e.origin] || e.data.type !== SEED_ORIGINS[e.origin]) return;
+    const ready = e.origin === D2C_ORIGIN ? !!window.D2C_BOARD : !!window.HACC_BOARD;
+    if (!currentUser || !ready) return;                        // pas encore prête : le favori réessaie
     if (seenIds.has(e.data.id)) return; seenIds.add(e.data.id);
-    try { const m = await importData(e.data, 'HACC'); e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: true, msg: m }, e.origin); }
+    try { const m = await importData(e.data, e.origin === D2C_ORIGIN ? 'D2C' : 'HACC'); e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: true, msg: m }, e.origin); }
     catch (err) { e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: false, msg: err.message }, e.origin); window.HACC_BOARD && window.HACC_BOARD.haccMsg(err.message, true); }
   });
-  function announceReady() { if (window.opener) { try { window.opener.postMessage({ type: 'hacc-board-ready' }, HACC_ORIGIN); } catch (e) {} } }
+  function announceReady() { if (window.opener) Object.keys(SEED_ORIGINS).forEach(o => { try { window.opener.postMessage({ type: 'hacc-board-ready' }, o); } catch (e) {} }); }
 
   // ---------- Fenêtre « Mettre à jour » ----------
   function bookmarkletCode() {
@@ -215,6 +218,7 @@
     $('memclose').onclick = () => $('memdlg').close();
     $('dlg-close').onclick = () => $('haccdlg').close();
     if ($('btn-import')) $('btn-import').onclick = openHaccHelp;
+    if ($('d2cbtn')) $('d2cbtn').onclick = openHaccHelp;        // « Mettre à jour depuis D2C » (inventaire usagé)
     $('importfile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       const out = $('importmsg'); out.textContent = 'Lecture…';

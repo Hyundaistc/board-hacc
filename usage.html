@@ -32,7 +32,8 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);fon
 header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
 h1{font-family:var(--f-display);font-weight:800;font-size:1.7rem;letter-spacing:-.01em;margin:0}
 .sub{color:var(--muted);font-size:.85rem;margin-top:2px}
-.hdr-r{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.d2cbtn{font-size:.8rem;font-weight:600;text-decoration:none;border-radius:6px;padding:7px 12px;background:var(--accent);color:var(--surface)}.d2cbtn:hover{opacity:.9}
+.hdr-r{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.d2cbtn{font:inherit;font-size:.8rem;font-weight:600;text-decoration:none;border:0;border-radius:6px;padding:7px 12px;background:var(--accent);color:var(--surface);cursor:pointer}.d2cbtn:hover{opacity:.9}
+.d2cbtn.d2clnk{background:transparent;color:var(--accent);border:1px solid var(--accent)}
 .snap{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
 .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
@@ -94,7 +95,8 @@ a.lnk{color:var(--accent);font-size:.78rem}
 .vbox{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:0}
 .vbox h3{margin:0 0 6px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .mini{width:100%;font-size:.84rem;font-variant-numeric:tabular-nums}.mini td,.mini th{padding:3px 4px}.mini th{font-size:.68rem;color:var(--muted);font-weight:600;text-align:left}
-.top{font-size:.62rem;font-weight:700;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 5px}
+.top{font-size:.62rem;font-weight:700;background:var(--warn-bg);color:var(--warn);border-radius:4px;padding:1px 5px;white-space:nowrap}
+.top.top-m{background:var(--ok-bg);color:var(--ok)} /* TOP 1 en argent (meilleure moyenne) */
 .sec-title{font-family:var(--f-display);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:6px 0 0}
 .status{font-size:.78rem;color:var(--muted)}.status.ok{color:var(--ok)}
 .empty-row{padding:20px;text-align:center;color:var(--muted)}
@@ -162,8 +164,8 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='6';window.HACC_APP_SCRIPT='usage.js';window.HACC_DB_PREFIX='usage_';</script>
-<script src="shim.js?v=2"></script>
+<script>window.HACC_VERSION='7';window.HACC_APP_SCRIPT='usage.js';window.HACC_DB_PREFIX='usage_';</script>
+<script src="shim.js?v=3"></script>
 </head>
 <body>
 <div id="gate" class="gate">
@@ -197,7 +199,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <div class="wrap">
   <header>
     <div><h1>Inventaire D2C — Occasions</h1><div class="sub">Hyundai St-Constant · véhicules d'occasion (publiés, non publiés et certifiés) tirés de D2C Media</div></div>
-    <div class="hdr-r"><div class="snap" id="snap"></div><a class="d2cbtn" href="https://admin.d2cmedia.ca/inventaire" target="_blank" rel="noopener">Ouvrir l'inventaire D2C ↗</a></div>
+    <div class="hdr-r"><div class="snap" id="snap"></div><button id="d2cbtn" class="d2cbtn admin-only" type="button" title="Ouvre l'inventaire D2C · met à jour l'inventaire du board pour toute l'équipe" hidden>Mettre à jour depuis D2C</button><a class="d2cbtn d2clnk" href="https://admin.d2cmedia.ca/inventaire" target="_blank" rel="noopener">Ouvrir l'inventaire D2C ↗</a></div>
   </header>
   <section class="kpis" id="kpis" aria-label="Indicateurs"></section>
   <div class="controls">
@@ -207,13 +209,19 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
   <div id="view"></div>
   <div class="status" id="savestate"></div>
   <div class="status" id="boardsrc"></div>
-  <p class="hint">Mise à jour de l'inventaire : un administrateur importe le fichier D2C (bouton « Importer »). Les ventes viennent des autos cochées Vendu ici et du bouton + de l'onglet Ventes (depuis le 1er novembre, plus d'import de BOARD 2026).</p>
+  <p class="hint">Pour rafraîchir l'inventaire, cliquez « Mettre à jour depuis D2C » (favori à cliquer sur l'inventaire D2C). Les ventes viennent des autos cochées Vendu ici et du bouton + de l'onglet Ventes (depuis le 1er novembre, plus d'import de BOARD 2026).</p>
 </div>
 </div>
 
 <dialog id="haccdlg" aria-labelledby="dlgt">
-  <h2 id="dlgt">Mettre à jour l'inventaire usagé (D2C)</h2>
-  <p class="hint">Importez le fichier d'inventaire D2C (.json) préparé par Claude, ou demandez à Claude de mettre à jour l'inventaire D2C.</p>
+  <h2 id="dlgt">Mettre à jour depuis D2C</h2>
+  <p class="hint">À installer une seule fois : glissez ce bouton dans votre barre de favoris.</p>
+  <p><a class="bm" id="bm-link" href="#">⟳ Inventaire D2C</a></p>
+  <ol>
+    <li>Ouvrez l'inventaire D2C et connectez-vous (<a href="https://admin.d2cmedia.ca/inventaire" target="_blank" rel="noopener">admin.d2cmedia.ca → Inventaire</a>).</li>
+    <li>Cliquez le favori <b>⟳ Inventaire D2C</b> pendant que vous êtes sur l'inventaire.</li>
+    <li>Le board s'ouvre et l'inventaire usagé (occasions publiées et non publiées) se met à jour pour toute l'équipe.</li>
+  </ol>
   <div class="adminbox admin-only" hidden>
     <b>Importer un fichier d'inventaire (.json)</b>
     <input type="file" id="importfile" accept=".json,application/json">
@@ -235,26 +243,24 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
   <div class="memwrap"><table class="memt"><tbody id="memlist"></tbody></table></div>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="memclose" type="button">Fermer</button></p>
 </dialog>
-<script type="text/plain" id="bm-src">var APP='__APP__';
-var HO='https://salesportal-hacc.am.hyundai-corp.io';
-if(location.origin!==HO){alert('Ouvrez d\'abord le portail HACC (liste de stock), puis cliquez ce favori.');return;}
+<script type="text/plain" id="bm-src">var APP='__APP__'.replace(/index\.html$/,'usage.html');
+var HO='https://admin.d2cmedia.ca';
+if(location.origin!==HO){alert('Ouvrez d\'abord l\'inventaire D2C (admin.d2cmedia.ca → Inventaire), puis cliquez ce favori.');return;}
 var w=window.open(APP+'#import','hacc_board');
 var AO=new URL(APP).origin;
-var SEL_L=['ZZLCAR_TXT','ZZMDYEAR','LSCCD_TXT','ZZEXTCL_TXT','ZZINTCL_TXT','VHVIN','ZODRNO','VBELN','LOCTNT','LGORTX','ZZETADT','AGING_DAYS','SOLD_STATUS','ZDEMO','ZPMON','RECALL_CNT','ZHOLDBAK'];
-var SEL_O=['ZZLCAR_TXT','ZZMDYEAR','LSCCD_TXT','ZZEXTCL_TXT','ZZINTCL_TXT','ZODRNO','ZODRTYP_DESC','ZPMON'];
-function u(dt,loc,ex){return HO+'/sap/opu/odata/sap/ZGWSDD77120_SRV/ZGWSDD77120_I_DATASet?sap-language=en&menu=dealerstocklist&rfc=ZFSDD_DP_LIST_DEALER_STK_DT&'+(dt==='S'?'$expand=T_ORDERS&$select='+SEL_O.map(function(f){return 'T_ORDERS/'+f}).join(','):'$expand=T_LIST&$select='+SEL_L.map(function(f){return 'T_LIST/'+f}).join(','))+"&$format=json&$filter=I_BUKRS%20eq%20%271300%27%20and%20I_LANGU%20eq%20%27FR%27%20and%20I_DEALER%20eq%20%27B06AA31052%27%20and%20I_MDYEAR%20eq%20%27%27%20and%20I_VHVIN%20eq%20%27%27%20and%20I_MODEL%20eq%20%27%27%20and%20I_USAGE%20eq%20%27%27%20and%20I_LOCATION%20eq%20%27"+loc+"%27%20and%20I_HOLDBACK_FLG%20eq%20%27%27%20and%20I_UNSOLD%20eq%20%27%27%20and%20I_DTYPE%20eq%20%27"+dt+"%27"+(ex?'%20and%20I_AGING_RNG%20eq%20%27%27%20and%20I_LSCCD%20eq%20%27%27%20and%20I_TRIM%20eq%20%27%27%20and%20I_EXCOL%20eq%20%27%27%20and%20I_INCOL%20eq%20%27%27':'');}
-var L5='220000000_230114000_270114001_230114500_230110000';
-var P=[['D','',false,'T_LIST'],['I',L5,true,'T_LIST'],['O',L5,true,'T_LIST'],['S',L5,true,'T_ORDERS']];
-function t(v){return (v==null||v==='0000-00-00')?'':String(v).trim();}
-function row(g,x){return [g,t(x.ZZLCAR_TXT),t(x.ZZMDYEAR),t(x.LSCCD_TXT),t(x.ZZEXTCL_TXT),t(x.ZZINTCL_TXT),t(x.VHVIN),t(x.ZODRNO||x.VBELN),t(x.LOCTNT||x.ZODRTYP_DESC),t(x.LGORTX),t(x.ZZETADT),t(x.AGING_DAYS),t(x.SOLD_STATUS),t(x.ZDEMO),t(x.ZPMON)==='000000'?'':t(x.ZPMON),t(x.RECALL_CNT),t(x.ZHOLDBAK)];}
-Promise.all(P.map(function(p){return fetch(u(p[0],p[1],p[2]),{credentials:'include',headers:{Accept:'application/json'}}).then(function(r){if(!r.ok)throw new Error('HACC a répondu '+r.status);return r.json();}).then(function(j){var d=j.d.results[0];return (d[p[3]]&&d[p[3]].results)||[];});})).then(function(g){
-  var G={D:'D',I:'T',O:'O',S:'S'},rows=[];
-  P.forEach(function(p,i){g[i].forEach(function(x){rows.push(row(G[p[0]],x));});});
-  if(rows.length<20)throw new Error('trop peu de véhicules reçus ('+rows.length+')');
-  var msg={type:'hacc-board-seed',id:String(Date.now()),date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'}),rows:rows};
-  var n=0,iv=setInterval(function(){if(n++>300){clearInterval(iv);return;}try{w.postMessage(msg,AO);}catch(e){}},1000);
+function tx(h){if(h==null)return '';var d=document.createElement('div');d.innerHTML=String(h);var r=d.querySelectorAll('.hidden-print,.cell-actions,.tooltip');for(var i=0;i<r.length;i++)r[i].parentNode.removeChild(r[i]);var c=d.querySelector('.cell-value');return (c||d).textContent.replace(/\s+/g,' ').trim();}
+function pics(h){var d=document.createElement('div');d.innerHTML=String(h==null?'':h);var b=d.querySelector('.badge');var t=(b?b.textContent:d.textContent).replace(/\D/g,'');return t||'0';}
+function n(v){var x=parseInt(String(v==null?'':v).replace(/\D/g,''),10);return isNaN(x)?0:x;}
+var body='draw=1&start=0&length=500&table_id=inventorySummary';
+fetch(HO+'/inventaire',{method:'POST',credentials:'include',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest',Accept:'application/json'},body:body}).then(function(r){if(!r.ok)throw new Error('D2C a répondu '+r.status);return r.json();}).then(function(j){
+  var rows=j&&j.data||[];if(rows.length<5)throw new Error('liste vide ou illisible ('+rows.length+' lignes)');
+  var inv=[];rows.forEach(function(r){if(tx(r.body)!=='used'||String(r.is_sold)==='1')return;
+    inv.push({id:n(r.id),stock:tx(r.no_stock),vin:tx(r.niv),make:tx(r.make),model:tx(r.model),version:tx(r.version),type:tx(r.type),year:tx(r.year),color:tx(r.color),km:tx(r.odometer),trans:tx(r.transmission),price:tx(r.price),orig:tx(r.original_price),priceDays:tx(r.priceDays),days:n(r.days_added),live:n(r.display_live),cert:n(r.certified),reserved:tx(r.reserved)||'0',pics:pics(r.picture_count),leads:tx(r.leads),vdp:tx(r.vdpViews),comments:tx(r.InternalComments),created:tx(r.dateCreated),url:tx(r.url)});});
+  if(inv.length<5)throw new Error('trop peu de véhicules d\'occasion trouvés ('+inv.length+')');
+  var msg={type:'d2c-seed',id:String(Date.now()),at:new Date().toISOString(),inv:inv};
+  var k=0,iv=setInterval(function(){if(k++>300){clearInterval(iv);return;}try{w.postMessage(msg,AO);}catch(e){}},1000);
   window.addEventListener('message',function(e){if(e.origin!==AO||!e.data)return;if(e.data.type==='hacc-board-ready'){try{w.postMessage(msg,AO);}catch(x){}}if(e.data.type==='hacc-board-ack'){clearInterval(iv);alert((e.data.ok?'✓ ':'✗ ')+e.data.msg);}});
-}).catch(function(e){alert('Lecture HACC impossible : '+e.message+'\nVérifiez que vous êtes connecté(e) au portail HACC.');});
+}).catch(function(e){alert('Lecture D2C impossible : '+e.message+'\nVérifiez que vous êtes connecté(e) à D2C Media.');});
 </script>
 </body>
 </html>
