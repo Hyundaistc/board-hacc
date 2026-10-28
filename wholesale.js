@@ -25,7 +25,7 @@ function setSnap(){const el=document.getElementById('snap');if(!el)return;el.tex
 function summary(){
   const el=document.getElementById('vsum');if(!el)return;
   const rows=monthSales(), live=rows.filter(alive), canc=rows.length-live.length;
-  const tp=live.reduce((a,x)=>a+profit(x.n.vente||{}),0), tv=live.reduce((a,x)=>a+num(x.n.vente?.vendant),0), tc=live.reduce((a,x)=>a+num(x.n.vente?.coutant),0);
+  const tp=live.reduce((a,x)=>a+profit(x.n.vente||{}),0);
   const obj=num(CFG.objectif)||0, pct=obj?Math.round(tp/obj*100):0;
   const livres=live.filter(x=>['livre','comptabilise','paye'].includes(x.n.vente?.statut)).length, compta=live.filter(x=>['comptabilise','paye'].includes(x.n.vente?.statut)).length, payes=live.filter(x=>x.n.vente?.statut==='paye').length, neg=live.filter(x=>profit(x.n.vente||{})<0).length;
   const m={};live.forEach(x=>{const nm=String(x.n.vente?.acheteur||'').trim().toUpperCase()||'—';m[nm]=m[nm]||{d:0,p:0};m[nm].d++;m[nm].p+=profit(x.n.vente||{})});
@@ -35,8 +35,6 @@ function summary(){
     <div class="kpi"><b>${live.length}</b><span>Ventes wholesale ce mois${canc?` · ${canc} annulée${canc>1?'s':''}`:''}</span></div>
     <div class="kpi"><b class="${tp<0?'profit-neg':''}">${moneyS(tp)}<small> / ${obj?money(obj):'—'}</small></b><span>Profit du mois · ${pct} % de l'objectif</span><div class="bar"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div></div>
     <div class="kpi"><b>${live.length?moneyS(tp/live.length):'—'}</b><span>Profit moyen par auto${neg?` · ${neg} à perte`:''}</span></div>
-    <div class="kpi"><b>${money(tv)}</b><span>Total vendant</span></div>
-    <div class="kpi"><b>${money(tc)}</b><span>Total coûtant</span></div>
     <div class="kpi"><b>${compta}<small> / ${live.length}</small></b><span>Comptabilisées · ${livres} livrée${livres>1?'s':''} · ${payes} payée${payes>1?'s':''}</span></div>
   </div>
   <div class="vboards" style="margin-top:10px"><div class="vbox"><h3>Acheteurs</h3>${list.length?`<table class="mini"><tr><th></th><th class="num">Autos</th><th class="num">Profit</th></tr>${list.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top" title="Le plus d\'autos">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${x.d}</td><td class="num">${i===bi?'<span class="top top-m" title="Meilleur profit">TOP 1 $</span> ':''}${moneyS(x.p)}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore ce mois-ci.</p>'}</div></div>`;
