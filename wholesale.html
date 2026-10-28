@@ -173,8 +173,8 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='1';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
-<script src="shim.js?v=3"></script>
+<script>window.HACC_VERSION='2';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
+<script src="shim.js?v=4"></script>
 </head>
 <body>
 <div id="gate" class="gate">
@@ -203,17 +203,23 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <div class="wrap">
   <header>
     <div><h1>Ventes wholesale</h1><div class="sub">Hyundai St-Constant · autos vendues aux marchands et aux encans (Strategia, Openlane, EBlock…) · profit du mois vs objectif</div></div>
-    <div class="hdr-r"><div class="snap" id="snap"></div><a class="d2cbtn d2clnk" href="https://docs.google.com/spreadsheets/d/1uGcjS8AjSXPXDsq29JgrxgSQgHYsw8AGQB1COYkrYK0/edit" target="_blank" rel="noopener">Ouvrir LOG WHOLESALE ↗</a></div>
+    <div class="hdr-r"><div class="snap" id="snap"></div><button id="oebtn" class="d2cbtn" type="button" title="Ouvre One-Eighty · ajoute les factures en gros du mois dans le board">Mettre à jour depuis One-Eighty</button><a class="d2cbtn d2clnk" href="https://docs.google.com/spreadsheets/d/1uGcjS8AjSXPXDsq29JgrxgSQgHYsw8AGQB1COYkrYK0/edit" target="_blank" rel="noopener">LOG WHOLESALE ↗</a></div>
   </header>
   <div id="view"></div>
   <div class="status" id="savestate"></div>
-  <p class="hint">Les ventes wholesale s'entrent ici (bouton <b>+</b>). Le profit se calcule tout seul (vendant − coûtant). Le no de stock remplit marque, modèle et NIV depuis l'inventaire usagé quand il y est.</p>
+  <p class="hint">Les ventes wholesale s'entrent ici (bouton <b>+</b>) ou arrivent de One-Eighty (bouton « Mettre à jour depuis One-Eighty »). Le profit se calcule tout seul (vendant − coûtant). Le no de stock remplit marque, modèle et NIV depuis l'inventaire usagé quand il y est.</p>
 </div>
 </div>
 
 <dialog id="haccdlg" aria-labelledby="dlgt">
-  <h2 id="dlgt">Importer</h2>
-  <p class="hint">Les ventes wholesale s'entrent directement dans le board.</p>
+  <h2 id="dlgt">Mettre à jour depuis One-Eighty</h2>
+  <p class="hint">À installer une seule fois : glissez ce bouton dans votre barre de favoris.</p>
+  <p><a class="bm" id="bm-link" href="#">⟳ Wholesale One-Eighty</a></p>
+  <ol>
+    <li>Ouvrez One-Eighty et connectez-vous (<a href="https://isw.dlsaccelerator.com/webasp/Sales/wholesale/quote_load.asp?mode=wholesale" target="_blank" rel="noopener">Ventes → Trouver Cot / Facture en gros</a>).</li>
+    <li>Cliquez le favori <b>⟳ Wholesale One-Eighty</b> pendant que vous êtes sur One-Eighty.</li>
+    <li>Le board s'ouvre : les factures en gros depuis le 1er du mois précédent sont ajoutées ou complétées (date, stock, auto, NIV, acheteur, vendant, no de facture). Les propositions pas encore facturées sont ignorées ; le coûtant reste à entrer ici.</li>
+  </ol>
   <div class="adminbox admin-only" hidden><input type="file" id="importfile" accept=".json,application/json" hidden><span class="hint" id="importmsg" role="status"></span></div>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="dlg-close" type="button">Fermer</button></p>
 </dialog>
@@ -231,6 +237,34 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
   <div class="memwrap"><table class="memt"><tbody id="memlist"></tbody></table></div>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="memclose" type="button">Fermer</button></p>
 </dialog>
-<script type="text/plain" id="bm-src"></script>
+<script type="text/plain" id="bm-src">var APP='__APP__'.replace(/index\.html$/,'wholesale.html');
+var HO='https://isw.dlsaccelerator.com';
+if(location.origin!==HO){alert('Ouvrez d\'abord One-Eighty (Ventes → Trouver Cot / Facture en gros), puis cliquez ce favori.');return;}
+var w=window.open(APP+'#import','hacc_board');
+var AO=new URL(APP).origin;
+var BASE=HO+'/webasp/Sales/wholesale/quote_load.asp?mode=wholesale';
+function pad(n){return String(n).padStart(2,'0');}
+var now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
+var body=new URLSearchParams({txtDealer:'',txtQuoteID:'',cmbMonth:String(from.getMonth()+1),txtDay:'1',cmbYear:String(from.getFullYear()),cmbMonthTo:String(now.getMonth()+1),txtDayTo:String(now.getDate()),cmbYearTo:String(now.getFullYear()),txtStockNum:'',cmbMake:'0',cmbStatus:'',cmbSalesRep:'0'}).toString();
+function post(url){return fetch(url,{method:'POST',credentials:'include',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){if(!r.ok)throw new Error('One-Eighty a répondu '+r.status);return r.text();});}
+var MON={jan:1,janv:1,feb:2,fev:2,'fév':2,mar:3,apr:4,avr:4,may:5,mai:5,jun:6,juin:6,jul:7,juil:7,aug:8,aout:8,'août':8,sep:9,sept:9,oct:10,nov:11,dec:12,'déc':12};
+function pDate(s){var m=String(s||'').trim().match(/^([A-Za-zéû]+)\.?\s+(\d{1,2}),?\s+(\d{4})/);if(!m)return '';var mm=MON[m[1].toLowerCase()];return mm?m[3]+'-'+pad(mm)+'-'+pad(m[2]):'';}
+function txt(el){return (el&&el.textContent||'').replace(/\s+/g,' ').trim();}
+function money(s){var n=parseFloat(String(s||'').replace(/[^\d.-]/g,''));return isNaN(n)?'':n;}
+post(BASE).then(function(html){
+  var d=new DOMParser().parseFromString(html,'text/html');
+  var tbl=[].slice.call(d.querySelectorAll('table')).filter(function(t){return t.rows.length>1&&/Transaction/.test(txt(t.rows[0]));})[0];
+  if(!tbl)throw new Error('liste des factures introuvable (êtes-vous connecté(e) à One-Eighty ?)');
+  var rows=[].slice.call(tbl.rows).slice(1).map(function(r){var c=[].slice.call(r.cells).map(txt);var veh=(c[7]||'').match(/^(\d{4})\s+(\S+)\s*(.*)$/)||[];return {id:c[0],date:pDate(c[1]),acheteur:(c[3]||'').replace(/\s*-\s*,?\s*$/,''),rep:c[4],stock:(c[5]||'').replace(/\s*\(W\)\s*$/,''),statut:c[6],vehicule:c[7],annee:veh[1]||'',marque:veh[2]||'',modele:veh[3]||'',facture:c[8]||'',approb:c[9]||''};}).filter(function(r){return /^\d+$/.test(r.id);});
+  var inv=rows.filter(function(r){return r.facture;}),i=0;
+  function next(){if(i>=inv.length)return Promise.resolve();var r=inv[i++];return post(BASE+'&QuoteID='+r.id+'&add=').then(function(h){var t=txt(new DOMParser().parseFromString(h,'text/html').body);var p=t.match(/PRIX DE VENTE TOTAL:\s*\$?\s*([\d,]+(?:\.\d+)?)/i);r.vendant=p?money(p[1].replace(/,/g,'')):'';var v=t.match(/NIV:\s*([A-HJ-NPR-Z0-9]{17})/);r.niv=v?v[1]:'';}).catch(function(){}).then(next);}
+  return Promise.all([next(),next(),next()]).then(function(){return rows;});
+}).then(function(rows){
+  if(!rows.length)throw new Error('aucune proposition en gros pour la période');
+  var msg={type:'oe-wholesale-seed',id:String(Date.now()),at:new Date().toISOString(),rows:rows};
+  var k=0,iv=setInterval(function(){if(k++>300){clearInterval(iv);return;}try{w.postMessage(msg,AO);}catch(e){}},1000);
+  window.addEventListener('message',function(e){if(e.origin!==AO||!e.data)return;if(e.data.type==='hacc-board-ready'){try{w.postMessage(msg,AO);}catch(x){}}if(e.data.type==='hacc-board-ack'){clearInterval(iv);alert((e.data.ok?'✓ ':'✗ ')+e.data.msg);}});
+}).catch(function(e){alert('Lecture One-Eighty impossible : '+e.message);});
+</script>
 </body>
 </html>

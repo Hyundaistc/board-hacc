@@ -5,7 +5,10 @@
   'use strict';
   const HACC_ORIGIN = 'https://salesportal-hacc.am.hyundai-corp.io';
   const D2C_ORIGIN = 'https://admin.d2cmedia.ca'; // favori « ⟳ Inventaire D2C » (inventaire usagé)
-  const SEED_ORIGINS = { [HACC_ORIGIN]: 'hacc-board-seed', [D2C_ORIGIN]: 'd2c-seed' };
+  const OE_ORIGIN = 'https://isw.dlsaccelerator.com'; // favori « ⟳ Wholesale One-Eighty » (ventes wholesale)
+  const SEED_ORIGINS = { [HACC_ORIGIN]: 'hacc-board-seed', [D2C_ORIGIN]: 'd2c-seed', [OE_ORIGIN]: 'oe-wholesale-seed' };
+  const SEED_READY = { [HACC_ORIGIN]: () => !!window.HACC_BOARD, [D2C_ORIGIN]: () => !!window.D2C_BOARD, [OE_ORIGIN]: () => !!(window.WS_BOARD && window.WS_BOARD.importOE) };
+  const SEED_NAME = { [HACC_ORIGIN]: 'HACC', [D2C_ORIGIN]: 'D2C', [OE_ORIGIN]: 'One-Eighty' };
   const SCOPES = [
     'https://www.googleapis.com/auth/drive.readonly',
     'https://www.googleapis.com/auth/spreadsheets',
@@ -125,6 +128,11 @@
 
   // ---------- Import (favori HACC ou fichier) ----------
   async function importData(data, source) {
+    if (data && data.type === 'oe-wholesale-seed') {           // ventes wholesale lues dans One-Eighty : fusion faite par wholesale.js (équipe ou admin)
+      if (PFX !== 'wholesale_') throw new Error('Ces ventes sont pour la page « Ventes wholesale ».');
+      if (!window.WS_BOARD || !window.WS_BOARD.importOE) throw new Error('Page pas encore prête, réessayez.');
+      return window.WS_BOARD.importOE(data);
+    }
     if (!isAdmin()) throw new Error('Seule une administratrice peut mettre à jour l\'inventaire.');
     const at = new Date().toISOString();
     if (data && data.type === 'd2c-seed') {
@@ -153,10 +161,9 @@
   const seenIds = new Set();
   window.addEventListener('message', async e => {
     if (!e.data || !SEED_ORIGINS[e.origin] || e.data.type !== SEED_ORIGINS[e.origin]) return;
-    const ready = e.origin === D2C_ORIGIN ? !!window.D2C_BOARD : !!window.HACC_BOARD;
-    if (!currentUser || !ready) return;                        // pas encore prête : le favori réessaie
+    if (!currentUser || !SEED_READY[e.origin]()) return;       // pas encore prête : le favori réessaie
     if (seenIds.has(e.data.id)) return; seenIds.add(e.data.id);
-    try { const m = await importData(e.data, e.origin === D2C_ORIGIN ? 'D2C' : 'HACC'); e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: true, msg: m }, e.origin); }
+    try { const m = await importData(e.data, SEED_NAME[e.origin]); e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: true, msg: m }, e.origin); }
     catch (err) { e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: false, msg: err.message }, e.origin); window.HACC_BOARD && window.HACC_BOARD.haccMsg(err.message, true); }
   });
   function announceReady() { if (window.opener) Object.keys(SEED_ORIGINS).forEach(o => { try { window.opener.postMessage({ type: 'hacc-board-ready' }, o); } catch (e) {} }); }
@@ -220,6 +227,7 @@
     $('dlg-close').onclick = () => $('haccdlg').close();
     if ($('btn-import')) $('btn-import').onclick = openHaccHelp;
     if ($('d2cbtn')) $('d2cbtn').onclick = openHaccHelp;        // « Mettre à jour depuis D2C » (inventaire usagé)
+    if ($('oebtn')) $('oebtn').onclick = openHaccHelp;          // « Mettre à jour depuis One-Eighty » (ventes wholesale)
     $('importfile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       const out = $('importmsg'); out.textContent = 'Lecture…';

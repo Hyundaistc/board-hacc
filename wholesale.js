@@ -55,9 +55,10 @@ function rowHtml(x,i){const k=x.k,n=x.n,v=n.vente||{},st=v.statut||'vendu',p=pro
   <td>${vIn(k,'acheteur',v.acheteur,'class="vi x" list="dl-acheteur" placeholder="Strategia, Openlane…"')}</td>
   <td>${vIn(k,'livraison',v.livraison,'type="date" class="vi d"')}</td>
   <td><select class="vi" data-vk="${k}" data-f="statut" aria-label="Statut" ${DB?'':'disabled'}>${STATUTS.map(([val,l])=>`<option value="${val}" ${st===val?'selected':''}>${l}</option>`).join('')}</select></td>
+  <td>${vIn(k,'facture',v.facture,'class="vi s" placeholder="#" style="width:64px" title="No de facture One-Eighty"')}</td>
   <td>${vIn(k,'note',v.note,'class="vi x" placeholder="Note"')}</td>
   <td class="c-del">${DB?`<button type="button" class="delrow" data-delsale="${k}" title="Supprimer cette ligne (doublon ou erreur)" aria-label="Supprimer la ligne ${i+1}">✕</button>`:''}</td></tr>`}
-const HEAD='<thead><tr><th>#</th><th>Date</th><th>Stock</th><th>Marque</th><th>Modèle</th><th>NIV</th><th class="num">Vendant</th><th class="num">Coûtant</th><th class="num">Profit</th><th>Acheteur</th><th>Livraison</th><th>Statut</th><th>Note</th><th class="c-del" title="Supprimer une ligne"></th></tr></thead>';
+const HEAD='<thead><tr><th>#</th><th>Date</th><th>Stock</th><th>Marque</th><th>Modèle</th><th>NIV</th><th class="num">Vendant</th><th class="num">Coûtant</th><th class="num">Profit</th><th>Acheteur</th><th>Livraison</th><th>Statut</th><th>Facture</th><th>Note</th><th class="c-del" title="Supprimer une ligne"></th></tr></thead>';
 function render(){
   setSnap();
   const months=[...new Set([todayTO().slice(0,7),...allSales().map(x=>(x.n.soldAt||'').slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m))])].sort().reverse();
@@ -72,8 +73,8 @@ function render(){
    <datalist id="dl-marque">${marques.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
    <datalist id="dl-acheteur">${acheteurs.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
    <p class="sec-title sec-add">Ventes de ${esc(MOIS[+VMONTH.slice(5)-1])} (${rows.filter(alive).length}) <button type="button" class="addrow" data-addsale title="Ajouter une vente" aria-label="Ajouter une vente wholesale en ${esc(MOIS[+VMONTH.slice(5)-1])}" ${DB?'':'disabled'}>+</button></p>
-   <div class="box"><div class="tbl" data-ts="mois"><table class="veh">${HEAD}<tbody>${rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="14" class="empty-row">Aucune vente wholesale ${esc(MOIS[+VMONTH.slice(5)-1])}. Cliquez <b>+</b> pour en ajouter une.</td></tr>`}</tbody></table></div></div>
-   <p class="hint">Couleurs : <span class="pill p-liv">Livré</span> <span class="pill p-ok">Payé</span> <span class="pill p-bad">Annulé</span> (exclu des totaux). Le <b>✕</b> au bout de la ligne supprime une vente (doublon ou erreur).</p>`;
+   <div class="box"><div class="tbl" data-ts="mois"><table class="veh">${HEAD}<tbody>${rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="15" class="empty-row">Aucune vente wholesale ${esc(MOIS[+VMONTH.slice(5)-1])}. Cliquez <b>+</b> pour en ajouter une.</td></tr>`}</tbody></table></div></div>
+   <p class="hint">Couleurs : <span class="pill p-liv">Livré</span> <span class="pill p-ok">Payé</span> <span class="pill p-bad">Annulé</span> (exclu des totaux). Le <b>✕</b> au bout de la ligne supprime une vente (doublon ou erreur). « Mettre à jour depuis One-Eighty » ajoute les factures en gros du mois (date, stock, auto, acheteur, vendant, no de facture) ; le coûtant reste à entrer ici.</p>`;
   summary(); topBars(document.getElementById('view'));
   document.getElementById('vmonth').onchange=e=>{VMONTH=e.target.value;render()};
 }
@@ -149,6 +150,37 @@ function topBars(root){
   });
 }
 
+// ---------- Synchro One-Eighty (favori « ⟳ Wholesale One-Eighty ») ----------
+// Reçoit les factures en gros lues dans One-Eighty (quote_load.asp) : une vente par facture. Une vente déjà au board (même no de stock,
+// vendue le même mois ou le mois d'à côté) est complétée (champs vides seulement) ; sinon elle est ajoutée. Le coûtant n'est jamais touché.
+const ACH_ALIAS=[[/STRATEGIA/i,'STRATEGIA'],[/JPC/i,'JPC AUTO'],[/EBLOCK|E-BLOCK/i,'EBLOCK'],[/TRADEREV|TRADE REV/i,'TRADEREV'],[/OPENLANE|OPEN LANE/i,'OPENLANE'],[/WHOLESALE ?EXPRESS|WHOLESALEXPRESS/i,'WHOLESALE EXPRESS'],[/KARFLIP/i,'KARFLIP']];
+const aliasAch=s=>{const t=String(s||'').replace(/\s*-\s*,?\s*$/,'').trim();const a=ACH_ALIAS.find(([re])=>re.test(t));return a?a[1]:t.toUpperCase()};
+const monthsApart=(a,b)=>{const [ya,ma]=String(a||'').split('-').map(Number),[yb,mb]=String(b||'').split('-').map(Number);return (ya&&yb)?Math.abs((ya*12+ma)-(yb*12+mb)):99};
+async function writeNotes(sets){const col=DB.collection('suivi'),b=DB.batch?DB.batch():null;
+  if(!b){for(const k of sets)await col.doc(k).set(await noteDoc(NOTES[k]));return}
+  for(let i=0;i<sets.length;i+=400){const bb=DB.batch();for(const k of sets.slice(i,i+400))bb.set(col.doc(k),await noteDoc(NOTES[k]));await bb.commit()}}
+async function importOE(data){
+  if(!DB)throw new Error('Connectez-vous pour mettre à jour les ventes wholesale.');
+  const rows=Array.isArray(data.rows)?data.rows:[];if(!rows.length)throw new Error('Aucune facture en gros trouvée dans One-Eighty pour la période.');
+  const t=x=>String(x??'').trim();let added=0,upd=0,same=0,quotes=0;const sets=[],bak={};
+  for(const r of rows){
+    if(!t(r.facture)){quotes++;continue}                         // proposition pas encore facturée : pas une vente
+    const stock=normName(r.stock),date=t(r.date).slice(0,10);if(!stock||!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;
+    const v={stock:t(r.stock).toUpperCase(),marque:t(r.marque).toUpperCase(),modele:t(r.modele).toUpperCase(),annee:t(r.annee),niv:t(r.niv).slice(-6),vendant:r.vendant!=null&&r.vendant!==''?String(num(r.vendant)):'',acheteur:aliasAch(r.acheteur),facture:t(r.facture),oeId:t(r.id),rep:t(r.rep)};
+    let k=(Object.entries(NOTES).find(([,n])=>n&&n.vendu&&t(n.vente?.oeId)===v.oeId)||Object.entries(NOTES).find(([,n])=>n&&n.vendu&&normName(n.vente?.stock)===stock&&monthsApart(n.soldAt,date)<=1)||[])[0];
+    if(!k){k='OE-'+v.oeId;bak[k]=undefined;NOTES[k]={vendu:true,comment:'',soldAt:date,vente:{...v,statut:'vendu',importe:'One-Eighty proposition '+v.oeId}};sets.push(k);added++;continue}
+    const n=NOTES[k],x=n.vente||{},o={...x};let ch=false;
+    ['marque','modele','annee','niv','acheteur','facture','oeId','rep'].forEach(f=>{if(!t(o[f])&&t(v[f])){o[f]=v[f];ch=true}});
+    if(!t(o.vendant)&&v.vendant){o.vendant=v.vendant;ch=true}
+    else if(v.vendant&&num(o.vendant)!==num(v.vendant)&&!String(o.note||'').includes('One-Eighty : vendant')){o.note=[t(o.note),'One-Eighty : vendant '+money(num(v.vendant))].filter(Boolean).join(' · ');ch=true}
+    if(ch){bak[k]=n;NOTES[k]={...n,vente:o};sets.push(k);upd++}else same++;
+  }
+  if(sets.length){try{await writeNotes(sets)}catch(e){Object.entries(bak).forEach(([k,n])=>{if(n===undefined)delete NOTES[k];else NOTES[k]=n});render();throw new Error('Non enregistré ('+(e&&e.code==='permission-denied'?'accès en lecture seule':e.message)+')')}}
+  if(!document.activeElement?.dataset?.vk)render();else summary();
+  const msg=`One-Eighty : ${added} vente${added>1?'s':''} ajoutée${added>1?'s':''}, ${upd} complétée${upd>1?'s':''}, ${same} déjà à jour`+(quotes?` · ${quotes} proposition${quotes>1?'s':''} pas encore facturée${quotes>1?'s':''} (ignorée${quotes>1?'s':''})`:'')+'.';
+  setStatus(msg);return msg;
+}
+
 // ---------- Base partagée ----------
 function setStatus(t){const el=document.getElementById('savestate');el.textContent=t;el.className='status ok';clearTimeout(el._t);el._t=setTimeout(()=>{el.textContent=DB?'Ventes wholesale partagées avec l\'équipe':'';el.className='status'},3000)}
 const noteDoc=async n=>({vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()});
@@ -170,4 +202,4 @@ async function saveCfg(){if(!DB)return;try{await DB.doc('config/ventes').set({ob
   setStatus('Ventes wholesale partagées avec l\'équipe');
 })();
 render();
-window.WS_BOARD={render};
+window.WS_BOARD={render,importOE};
