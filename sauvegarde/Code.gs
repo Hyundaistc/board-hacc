@@ -1,7 +1,7 @@
 /**
- * Sauvegarde quotidienne des ventes — Board HACC (neuf) et Inventaire usagé (D2C) · Hyundai St-Constant
+ * Sauvegarde quotidienne des ventes — Board HACC (neuf), Inventaire usagé (D2C) et Ventes wholesale · Hyundai St-Constant
  *
- * Chaque jour vers 9 h (heure de Montréal), ce script lit TOUTES les ventes neuves et usagées du board
+ * Chaque jour vers 9 h (heure de Montréal), ce script lit TOUTES les ventes neuves, usagées et wholesale du board
  * (base Firestore du projet hacc-st-constant) et enregistre un fichier Excel daté
  * « Ventes neufs et usagés AAAA-MM-JJ.xlsx » dans le dossier Google Drive « Sauvegardes ventes (board) ».
  *
@@ -30,10 +30,12 @@ function sauvegarder() {
 
   const neufs = lireCollection_('suivi');
   const usages = lireCollection_('usage_suivi');
+  const wholesale = lireCollection_('wholesale_suivi');
   const invN = lireDoc_('inventaire/actuel'), invU = lireDoc_('usage_inventaire/actuel'), stock = lireDoc_('config/stock');
   const LN = lignesNeufs_(neufs, json_(invN), (stock && stock.map) || {});
   const LU = lignesUsages_(usages, json_(invU));
-  const brut = neufs.map(function (d) { return brut_('Neuf', d); }).concat(usages.map(function (d) { return brut_('Usagé', d); }));
+  const LW = lignesWholesale_(wholesale);
+  const brut = neufs.map(function (d) { return brut_('Neuf', d); }).concat(usages.map(function (d) { return brut_('Usagé', d); }), wholesale.map(function (d) { return brut_('Wholesale', d); }));
 
   const titre = 'Ventes neufs et usagés ' + jour;
   const ss = SpreadsheetApp.create(titre);
@@ -43,20 +45,22 @@ function sauvegarder() {
     f1.setName('Ventes neufs');
     ecrire_(f1, ENTETE_NEUFS, LN, NUM_NEUFS);
     ecrire_(ss.insertSheet('Ventes usagés'), ENTETE_USAGES, LU, NUM_USAGES);
+    ecrire_(ss.insertSheet('Ventes wholesale'), ENTETE_WHOLESALE, LW, NUM_WHOLESALE);
     ecrire_(ss.insertSheet('Données complètes'), ENTETE_BRUT, brut, []);
     const info = ss.insertSheet('Info', 0);
-    info.getRange(1, 1, 8, 2).setNumberFormat('@').setValues([
+    info.getRange(1, 1, 9, 2).setNumberFormat('@').setValues([
       ['Sauvegarde des ventes — Hyundai St-Constant', ''],
       ['Faite le', heure],
       ['Ventes neufs (onglet « Ventes neufs »)', String(LN.length)],
       ['Ventes usagés (onglet « Ventes usagés »)', String(LU.length)],
+      ['Ventes wholesale (onglet « Ventes wholesale »)', String(LW.length)],
       ['Fiches complètes (onglet « Données complètes »)', String(brut.length)],
-      ['Source', 'Board HACC et Inventaire usagé (Firestore ' + PROJET + '), lecture seule'],
+      ['Source', 'Board HACC, Inventaire usagé et Ventes wholesale (Firestore ' + PROJET + '), lecture seule'],
       ['Contenu', 'Toutes les ventes de tous les mois, y compris les annulées. « Données complètes » garde chaque fiche telle quelle pour pouvoir tout remettre.'],
       ['Prochaine copie', 'Demain vers 9 h']
     ]);
     info.getRange(1, 1).setFontWeight('bold').setFontSize(13);
-    info.getRange(2, 1, 7, 1).setFontWeight('bold');
+    info.getRange(2, 1, 8, 1).setFontWeight('bold');
     info.setColumnWidth(1, 330); info.setColumnWidth(2, 620);
     SpreadsheetApp.flush();
 
@@ -64,7 +68,7 @@ function sauvegarder() {
       headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
     }).getBlob().setName(titre + '.xlsx');
     const fichier = dossier_().createFile(xlsx);
-    Logger.log('Sauvegarde enregistrée : ' + fichier.getName() + ' — ' + fichier.getUrl() + ' (' + LN.length + ' neufs, ' + LU.length + ' usagés)');
+    Logger.log('Sauvegarde enregistrée : ' + fichier.getName() + ' — ' + fichier.getUrl() + ' (' + LN.length + ' neufs, ' + LU.length + ' usagés, ' + LW.length + ' wholesale)');
     return fichier.getUrl();
   } finally {
     DriveApp.getFileById(ss.getId()).setTrashed(true); // brouillon Google Sheets : seulement le fichier Excel est gardé
@@ -76,6 +80,9 @@ const ENTETE_NEUFS = ['Mois', 'Vendu le', 'Statut', 'Représentant', 'F&I', 'Dir
 const NUM_NEUFS = [18, 19, 20, 21, 22]; // colonnes en dollars (index à partir de 0)
 const ENTETE_USAGES = ['Mois', 'Vendu le', 'Statut', 'Représentant', 'F&I', 'Dir', 'Source', 'Client', 'Marque', 'Modèle', 'Année', 'Stock', 'Date F&I', 'Garantie', 'Financement', 'Livraison', 'Recon', 'Front', 'Front Marjo', 'Back', 'Front retenu', 'Total', 'Commentaire', 'Clé (board)', 'Modifié par', 'Modifié le'];
 const NUM_USAGES = [16, 17, 18, 19, 20, 21];
+const ENTETE_WHOLESALE = ['Mois', 'Date', 'Statut', 'Stock', 'Marque', 'Modèle', 'NIV (6 derniers)', 'Vendant', 'Coûtant', 'Profit', 'Acheteur', 'Livraison', 'Note', 'Clé (board)', 'Modifié par', 'Modifié le'];
+const NUM_WHOLESALE = [7, 8, 9];
+const STATUT_W = { vendu: 'Vendu', livre: 'Livré', paye: 'Payé', cancel: 'Annulé' };
 const ENTETE_BRUT = ['Inventaire', 'Clé (board)', 'Vendu', 'Vendu le', 'Commentaire', 'Vente (toutes les infos)', 'Modifié par', 'Modifié le'];
 const STATUT_N = { vendu: 'Vendu', commande: 'Commande', comptabilise: 'Comptabilisé', dealer: 'Dealer trade', cancel: 'Annulé' };
 const STATUT_U = { vendu: 'Vendu', comptabilise: 'Comptabilisé', cancel: 'Annulé / refus' };
@@ -108,6 +115,15 @@ function lignesUsages_(docs, inv) {
       nombre_(x.recon), fr, fm, bk, st === 'cancel' ? '' : retenu, total, txt_(d.comment), d._id, txt_(d.by), txt_(d.at)];
   });
   return trier_(L, 7);
+}
+
+function lignesWholesale_(docs) {
+  const L = docs.filter(function (d) { return d.vendu === true; }).map(function (d) {
+    const x = d.vente || {}, st = txt_(x.statut) || 'vendu', vd = nombre_(x.vendant), ct = nombre_(x.coutant);
+    const profit = st === 'cancel' ? '' : (Number(vd || 0) - Number(ct || 0));
+    return [txt_(d.soldAt).slice(0, 7), txt_(d.soldAt).slice(0, 10), STATUT_W[st] || st, txt_(x.stock), txt_(x.marque), txt_(x.modele), txt_(x.niv), vd, ct, profit, txt_(x.acheteur), txt_(x.livraison), txt_(x.note), d._id, txt_(d.by), txt_(d.at)];
+  });
+  return trier_(L, 3);
 }
 
 function brut_(base, d) {
