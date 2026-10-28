@@ -103,7 +103,8 @@ function paint(k){
   document.querySelectorAll(`input[type=date][data-dk="${k}"]`).forEach(i=>{i.disabled=!DB||!n.vendu;if(document.activeElement!==i)i.value=n.vendu?(n.soldAt||''):''});
 }
 const timers={};
-const noteDoc=async n=>({vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()});
+const noteDoc=async n=>{if(n.vente)n.vente=canonVente(n.vente); // règle des noms (ALEX M → ALEX) appliquée à chaque enregistrement
+  return {vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()}};
 const saveErr=e=>setStatus(e&&e.code==='not_granted'||e&&(e.code==='permission_denied'||e.code==='permission-denied')?'Lecture seule : demandez un accès à l\'administratrice pour modifier':'Non enregistré, réessayez');
 async function saveNote(k){
   if(!DB) return false;
@@ -132,7 +133,7 @@ document.addEventListener('input',e=>{const i=e.target;if(i.matches('input[type=
     const seen=new Set();
     if(typeof snap.docChanges==='function') snap.docChanges().forEach(ch=>{if(ch.type==='removed')delete NOTES[ch.doc.id]}); // fiche effacée ailleurs (✕, vente réactivée)
     snap.docs.forEach(d=>{if(!d.exists)return;seen.add(d.id);const x=d.data()||{};const focused=document.activeElement?.dataset?.k===d.id&&document.activeElement.type==='text';const editing=document.activeElement?.dataset?.vk===d.id;NOTES[d.id]={vendu:!!x.vendu,comment:focused?(NOTES[d.id]?.comment??x.comment):(x.comment||''),soldAt:x.soldAt||'',vente:editing?(NOTES[d.id]?.vente||{}):(x.vente||{})}});
-    if(first){first=false;render();incoming();releaseCancelled();} else {Object.keys(NOTES).forEach(paint); kpis(); matrix(); if(tab==='ventes'&&!document.activeElement?.dataset?.vk) list(); else if(tab==='ventes') ventesSummary(); tabsUI();}
+    if(first){first=false;render();incoming();releaseCancelled();normalizeNames();} else {Object.keys(NOTES).forEach(paint); kpis(); matrix(); if(tab==='ventes'&&!document.activeElement?.dataset?.vk) list(); else if(tab==='ventes') ventesSummary(); tabsUI();}
   },err=>setStatus('Synchronisation interrompue, rechargez la page'));
 })();
 
@@ -244,7 +245,12 @@ function incoming(){
 // ---- Board de ventes ----
 const MOIS_L=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 let VMONTH=new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'}).slice(0,7), CFG={objectif:66,objMoy:1500,fiEmails:{}};
-const REPS=['MICK','ALEX M','ALEX D','NINA','SEB','PAT','SAM','WILL','CHARBEL','HOUSE'], FIS=['MEL','KEV','ISA'], DIRS=['OMAR','BLACK','MICK','ALEX'], SRCS=['UP','CLIENT MAISON','WEB','TÉLÉPHONE','RÉFÉRENCE','DEALER TRADE'];
+const REPS=['MICK','ALEX','ALEX D','NINA','SEB','PAT','SAM','WILL','CHARBEL','HOUSE'], FIS=['MEL','KEV','ISA'], DIRS=['OMAR','BLACK','MICK','ALEX'], SRCS=['UP','CLIENT MAISON','WEB','TÉLÉPHONE','RÉFÉRENCE','DEALER TRADE'];
+// Règle des noms (représentant, F&I, directeur) : « ALEX M » et « MAHER » s'écrivent « ALEX » (ALEM M = faute de frappe). Appliquée à chaque
+// enregistrement, dans les sommaires et aux ventes déjà entrées (rattrapage admin, normalizeNames). Les ventes partagées (ex. « ALEX M-PAT ») sont gérées.
+const NOM_ALIAS={'ALEX M':'ALEX','ALEXM':'ALEX','ALEM M':'ALEX','MAHER':'ALEX'}, NOM_F=['rep','fi','dir'];
+const canonNom=s=>String(s??'').split(/([-\/])/).map(p=>{const t=p.trim(),a=NOM_ALIAS[t.toUpperCase().replace(/\./g,'').replace(/\s+/g,' ')];return a?p.replace(t,a):p}).join('');
+const canonVente=x=>{if(!x||typeof x!=='object')return x;let o=x;NOM_F.forEach(f=>{if(typeof x[f]==='string'){const c=canonNom(x[f]);if(c!==x[f]){if(o===x)o={...x};o[f]=c}}});return o};
 const STATUTS=[['vendu','Vendu'],['commande','Commande'],['comptabilise','Comptabilisé'],['dealer','Dealer trade'],['cancel','Annulé']];
 const num=x=>{const n=parseFloat(String(x??'').replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n};
 const effF=x=>{x=x||{};return String(x.frontM??'').trim()?num(x.frontM):num(x.front)};
@@ -273,7 +279,7 @@ function ventesSummary(){
   const tf=live.reduce((a,r)=>a+effF(r.n.vente),0), bk=live.map(r=>num(r.n.vente?.back)), tb=bk.reduce((a,b)=>a+b,0), nb=bk.filter(x=>x).length;
   const livre=live.filter(r=>VMONTH?inMonthLiv(r.n.vente?.livraison,VMONTH):!!r.n.vente?.livraison).length, rdr=[...salesRows(),...carryRows()].filter(r=>r.n.vente?.rdrOk&&(!VMONTH||inMonthLiv(r.n.vente.rdrAt,VMONTH))).length;
   const obj=num(CFG.objectif)||0, pct=obj?Math.round(mrows.length/obj*100):0;
-  const group=(f)=>{const m={};live.forEach(r=>{const x=r.n.vente||{};const names=String(x[f]||'').toUpperCase().split(/[-\/]/).map(z=>z.trim()).filter(Boolean);const w=names.length?1/names.length:0;names.forEach(nm=>{m[nm]=m[nm]||{d:0,fm:0,fc:0,b:0,bc:0};m[nm].d+=w;if(hasFM(x)){m[nm].fm+=num(x.frontM)*w;m[nm].fc+=w}if(num(x.back)){m[nm].b+=num(x.back)*w;m[nm].bc+=w}})});return Object.entries(m).sort((a,b)=>b[1].d-a[1].d)};
+  const group=(f)=>{const m={};live.forEach(r=>{const x=r.n.vente||{};const names=canonNom(x[f]).toUpperCase().split(/[-\/]/).map(z=>z.trim()).filter(Boolean);const w=names.length?1/names.length:0;names.forEach(nm=>{m[nm]=m[nm]||{d:0,fm:0,fc:0,b:0,bc:0};m[nm].d+=w;if(hasFM(x)){m[nm].fm+=num(x.frontM)*w;m[nm].fc+=w}if(num(x.back)){m[nm].b+=num(x.back)*w;m[nm].bc+=w}})});return Object.entries(m).sort((a,b)=>b[1].d-a[1].d)};
   const fmtD=d=>Number.isInteger(d)?d:d.toFixed(1);
   const avg=(x,col)=>col==='f'?(x.fc?money(x.fm/x.fc):'—'):(x.bc?money(x.b/x.bc):'—');
   const board=(title,list,col,lab)=>`<div class="vbox"><h3>${title}</h3>${list.length?`<table class="mini"><tr><th></th><th class="num">Deals</th><th class="num">${lab}</th></tr>${list.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${fmtD(x.d)}</td><td class="num">${avg(x,col)}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore ce mois-ci.</p>'}</div>`;
@@ -336,6 +342,40 @@ document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest
 document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[data-cal]');if(!a)return;const k=a.dataset.cal;NOTES[k]={...(NOTES[k]||{}),vente:{...(NOTES[k]?.vente||{}),cal:1}};a.classList.add('done');a.textContent='✓ Ajouté';saveNote(k)});
 const rowCls=x=>'st-'+(x.statut||'vendu')+(x.livraison?' livre':'')+(String(x.frontM||'').trim()?' marjo':'');
 function vIn(k,f,val,attrs=''){return `<input ${attrs.includes('class=')?'':'class="vi"'} id="v-${f}-${k}" data-vk="${k}" data-f="${f}" value="${esc(val??'')}" ${attrs} ${DB?'':'disabled'} aria-label="${f}">`}
+// ---- Barre du haut sur chaque tableau de ventes : on la glisse (souris ou doigt) pour voir les colonnes de droite ----
+// Toujours visible (dessinée par le board, pas la barre du système qui se cache sur Mac), elle suit le tableau et l'inverse,
+// reste collée en haut de l'écran tant que le tableau est visible et garde sa position quand le board se met à jour.
+const TS_POS={}; let TS_RO=null;
+function tsSync(bar){
+  const t=bar.nextElementSibling, th=bar.querySelector('.tthumb'), tr=th&&th.parentElement; if(!t||!th)return;
+  const max=t.scrollWidth-t.clientWidth; bar.hidden=max<2; if(bar.hidden)return;
+  const W=tr.clientWidth, w=Math.min(W,Math.max(48,Math.round(W*t.clientWidth/t.scrollWidth)));
+  th.style.width=w+'px'; th.style.transform=`translateX(${Math.round((W-w)*Math.min(1,Math.max(0,t.scrollLeft/max)))}px)`;
+}
+function topBars(root){
+  if(!root)return;
+  if(!TS_RO&&window.ResizeObserver)TS_RO=new ResizeObserver(es=>es.forEach(e=>{const t=e.target.closest('.tbl'),b=t&&t.previousElementSibling;if(b&&b.classList.contains('tscroll'))tsSync(b)}));
+  if(TS_RO)TS_RO.disconnect();
+  root.querySelectorAll('.tbl[data-ts]').forEach(t=>{
+    let bar=t.previousElementSibling;
+    if(!bar||!bar.classList.contains('tscroll')){
+      bar=document.createElement('div'); bar.className='tscroll'; bar.title='Glissez pour voir les autres colonnes'; bar.setAttribute('aria-hidden','true');
+      bar.innerHTML='<div class="ttrack"><div class="tthumb"></div></div>'; t.before(bar); t.parentElement.classList.add('ts-host');
+      const th=bar.querySelector('.tthumb'), tr=th.parentElement; let off=null;
+      const go=x=>{const W=tr.clientWidth-th.offsetWidth, max=t.scrollWidth-t.clientWidth; if(W>0)t.scrollLeft=(x-tr.getBoundingClientRect().left-off)/W*max};
+      bar.addEventListener('pointerdown',e=>{if(e.button)return; const r=th.getBoundingClientRect(); off=(e.clientX>=r.left&&e.clientX<=r.right)?e.clientX-r.left:th.offsetWidth/2; // clic hors du curseur : il saute sous la souris
+        try{bar.setPointerCapture(e.pointerId)}catch(x){} th.classList.add('drag'); go(e.clientX); e.preventDefault()});
+      bar.addEventListener('pointermove',e=>{if(off!=null)go(e.clientX)});
+      const end=()=>{off=null;th.classList.remove('drag')}; ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>bar.addEventListener(ev,end));
+      bar.addEventListener('mousedown',e=>e.preventDefault()); // ne pas sortir de la case en cours de saisie
+      bar.addEventListener('wheel',e=>{if(Math.abs(e.deltaX)>Math.abs(e.deltaY)){t.scrollLeft+=e.deltaX;e.preventDefault()}},{passive:false});
+      t.addEventListener('scroll',()=>{TS_POS[t.dataset.ts]=t.scrollLeft;tsSync(bar)},{passive:true});
+    }
+    if(TS_POS[t.dataset.ts])t.scrollLeft=TS_POS[t.dataset.ts];
+    tsSync(bar);
+    if(TS_RO){TS_RO.observe(t);if(t.firstElementChild)TS_RO.observe(t.firstElementChild)}
+  });
+}
 function ventesView(){
   let rows=salesRows();
   const months=[...new Set([SNAP.slice(0,7),todayTO().slice(0,7),...Object.values(NOTES).filter(n=>n.vendu).map(saleMonth)])].sort().reverse();
@@ -352,7 +392,7 @@ function ventesView(){
   rows=rows.filter(r=>!isCx(r));
   const rowHtml=(r,i)=>{const v=r.v,k=r.k,x=r.n.vente||{},st=x.statut||'vendu',tot=st==='cancel'?0:effF(x)+num(x.back);
     const dv=(f,def)=>(x[f]!=null&&String(x[f]).trim()!=='')?x[f]:def;
-    return `<tr data-vrow="${k}" class="${rowCls(x)}"><td class="idx">${i+1}${isManual(k)&&DB?`<button type="button" class="delrow" data-delsale="${k}" title="Effacer cette vente ajoutée à la main" aria-label="Effacer la vente ${i+1}">✕</button>`:''}</td>
+    return `<tr data-vrow="${k}" class="${rowCls(x)}"><td class="idx">${i+1}</td>
     <td>${vIn(k,'rep',x.rep,'list="dl-rep"')}</td><td>${vIn(k,'fi',x.fi,'list="dl-fi" class="vi s"')}</td><td>${vIn(k,'dir',x.dir,'list="dl-dir"')}</td><td>${vIn(k,'source',x.source,'list="dl-src"')}</td>
     <td>${vIn(k,'client',(x.client&&x.client.trim())?x.client:(r.n.comment||''),'class="vi l" placeholder="'+(isInvKey(k)?'Écrire dans Commentaire':'Nom du client')+'"')}</td>
     <td>${vIn(k,'model',dv('model',v.model),'list="dl-model" class="vi b"')}</td><td>${vIn(k,'gamme',dv('gamme',v.ver),'class="vi l"')}</td><td>${vIn(k,'couleur',dv('couleur',colorName(v.ext)),'class="vi l2"')}</td><td>${vIn(k,'annee',dv('annee',v.year),'inputmode="numeric" class="vi s"')}</td>
@@ -361,15 +401,16 @@ function ventesView(){
     <td>${vIn(k,'front',x.front,'inputmode="decimal" class="vi m"')}</td><td>${vIn(k,'frontM',x.frontM,'inputmode="decimal" class="vi m"')}</td><td>${vIn(k,'back',x.back,'inputmode="decimal" class="vi m"')}</td>
     <td class="num tot" id="tot-${k}">${tot?money(tot):'—'}</td>
     <td><select class="vi" id="v-statut-${k}" data-vk="${k}" data-f="statut" ${DB?'':'disabled'}>${STATUTS.map(([val,l])=>`<option value="${val}" ${st===val?'selected':''}>${l}</option>`).join('')}</select></td>
-    <td>${vIn(k,'soldAt',r.n.soldAt||SNAP,'type="date"')}</td></tr>`};
-  const thead=`<thead><tr><th>#</th><th>Représentant</th><th>F&amp;I</th><th>Dir</th><th>Source</th><th>Nom du client</th><th>Modèle</th><th>Gamme</th><th>Couleur</th><th>Année</th><th>Stock</th><th>NIV</th><th>Date F&amp;I</th><th>Livraison</th><th>RDR</th><th>Heure</th><th>Agenda</th><th class="num">Front</th><th class="num">Front Marjo</th><th class="num">Back</th><th class="num">Total</th><th>Statut</th><th>Vendu le</th></tr></thead>`;
+    <td>${vIn(k,'soldAt',r.n.soldAt||SNAP,'type="date"')}</td>
+    <td class="c-del">${DB?`<button type="button" class="delrow" data-delsale="${k}" title="Supprimer cette ligne (doublon ou erreur)" aria-label="Supprimer la ligne ${i+1}">✕</button>`:''}</td></tr>`};
+  const thead=`<thead><tr><th>#</th><th>Représentant</th><th>F&amp;I</th><th>Dir</th><th>Source</th><th>Nom du client</th><th>Modèle</th><th>Gamme</th><th>Couleur</th><th>Année</th><th>Stock</th><th>NIV</th><th>Date F&amp;I</th><th>Livraison</th><th>RDR</th><th>Heure</th><th>Agenda</th><th class="num">Front</th><th class="num">Front Marjo</th><th class="num">Back</th><th class="num">Total</th><th>Statut</th><th>Vendu le</th><th class="c-del" title="Supprimer une ligne"></th></tr></thead>`;
   const pN=prevM?MOIS_L[+prevM.slice(5)-1]:'', cN=VMONTH?MOIS_L[+VMONTH.slice(5)-1]:'', livN=VMONTH>=CARRY_DES?`après le 2 ${cN}`:`en ${cN}`;
-  const carryHtml=prevM?`<div class="sec-title">Carry over de ${pN} · vendus en ${pN}, livrés ${livN} (${carry.length})</div><section class="model carry"><div class="tbl"><table class="veh vt">${thead}<tbody>${carry.map((r,i)=>rowHtml(r,i).replace('data-vrow=','data-vrow-c="1" data-vrow=')).join('')||`<tr><td colspan="23" class="empty-row">Aucun carry over : les ventes de ${pN} apparaissent ici dès qu'on entre une date de livraison ${livN}.</td></tr>`}</tbody></table></div></section><div class="sec-title sec-add">Ventes de ${cN} (${rows.length}) <button type="button" class="addrow" data-addsale title="Ajouter une vente à la main" aria-label="Ajouter une vente en ${cN}" ${DB?'':'disabled'}>+</button></div>`:'';
+  const carryHtml=prevM?`<div class="sec-title">Carry over de ${pN} · vendus en ${pN}, livrés ${livN} (${carry.length})</div><section class="model carry"><div class="tbl" data-ts="carry"><table class="veh vt">${thead}<tbody>${carry.map((r,i)=>rowHtml(r,i).replace('data-vrow=','data-vrow-c="1" data-vrow=')).join('')||`<tr><td colspan="24" class="empty-row">Aucun carry over : les ventes de ${pN} apparaissent ici dès qu'on entre une date de livraison ${livN}.</td></tr>`}</tbody></table></div></section><div class="sec-title sec-add">Ventes de ${cN} (${rows.length}) <button type="button" class="addrow" data-addsale title="Ajouter une vente à la main" aria-label="Ajouter une vente en ${cN}" ${DB?'':'disabled'}>+</button></div>`:'';
   const body=rows.map(rowHtml).join('');
-  document.getElementById('list').innerHTML=head+`<datalist id="dl-model">${models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>`+carryHtml+`<section class="model"><div class="tbl"><table class="veh vt">${thead}<tbody>${body||`<tr><td colspan="23" class="empty-row">Aucune vente ${VMONTH?'ce mois-ci':''}. Cochez <b>Vendu</b> sur une auto dans les onglets Arrivages ou En stock : elle apparaîtra ici.${VMONTH?' Pour une vente hors inventaire, cliquez <b>+</b>.':''}</td></tr>`}</tbody></table></div></section>
-    ${cancelled.length?`<div class="sec-title">Ventes annulées (${cancelled.length}) · non comptées dans les totaux</div><section class="model cx"><div class="tbl"><table class="veh vt">${thead}<tbody>${cancelled.map(rowHtml).join('')}</tbody></table></div></section>`:''}
-    <p class="hint">Légende : <span class="pill p-ok">Front Marjo entré</span> <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-n">Commande</span> <span class="pill p-warn">Dealer trade</span> <span class="pill p-bad">Annulé</span>. Décocher Vendu retire l'auto du board de ventes (les infos sont gardées si on la recoche). Une vente mise <b>Annulé</b> reste ici en rouge et l'auto redevient disponible en inventaire. Le ✕ efface une vente ajoutée avec +.</p>`;
-  ventesSummary();
+  document.getElementById('list').innerHTML=head+`<datalist id="dl-model">${models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>`+carryHtml+`<section class="model"><div class="tbl" data-ts="mois"><table class="veh vt">${thead}<tbody>${body||`<tr><td colspan="24" class="empty-row">Aucune vente ${VMONTH?'ce mois-ci':''}. Cochez <b>Vendu</b> sur une auto dans les onglets Arrivages ou En stock : elle apparaîtra ici.${VMONTH?' Pour une vente hors inventaire, cliquez <b>+</b>.':''}</td></tr>`}</tbody></table></div></section>
+    ${cancelled.length?`<div class="sec-title">Ventes annulées (${cancelled.length}) · non comptées dans les totaux</div><section class="model cx"><div class="tbl" data-ts="cx"><table class="veh vt">${thead}<tbody>${cancelled.map(rowHtml).join('')}</tbody></table></div></section>`:''}
+    <p class="hint">Légende : <span class="pill p-ok">Front Marjo entré</span> <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-n">Commande</span> <span class="pill p-warn">Dealer trade</span> <span class="pill p-bad">Annulé</span>. Décocher Vendu retire l'auto du board de ventes (les infos sont gardées si on la recoche). Une vente mise <b>Annulé</b> reste ici en rouge et l'auto redevient disponible en inventaire. Le <b>✕</b> au bout de la ligne supprime une vente (doublon ou erreur) : une auto de l'inventaire redevient disponible.</p>`;
+  ventesSummary(); topBars(document.getElementById('list'));
   const sel=document.getElementById('vmonth'); sel.onchange=()=>{VMONTH=sel.value;ventesView()};
 }
 const vTimers={};
@@ -396,6 +437,8 @@ document.addEventListener('input',e=>{const i=e.target;
   if(['statut','livraison','frontM'].includes(f)){const tr=document.querySelector(`tr[data-vrow="${k}"]`);if(tr)tr.className=rowCls(NOTES[k].vente)}
   ventesSummary(); clearTimeout(vTimers[k]); vTimers[k]=setTimeout(()=>saveNote(k), i.tagName==='SELECT'||i.type==='date'?0:800);
 });
+// Règle des noms : en quittant la case Représentant / F&I / Dir, « ALEX M » ou « MAHER » devient « ALEX » (puis enregistré comme une saisie)
+document.addEventListener('change',e=>{const i=e.target;if(!i.dataset||!i.dataset.vk||!NOM_F.includes(i.dataset.f))return;const c=canonNom(i.value);if(c!==i.value){i.value=c;i.dispatchEvent(new Event('input',{bubbles:true}))}});
 (async()=>{ try{ const db=await window.claude?.use?.('db'); if(!db) return; db.doc('config/ventes').onSnapshot(s=>{ if(s.exists){const x=s.data()||{}; if(document.activeElement?.id!=='vobj'&&document.activeElement?.id!=='vobjm'){if(!document.activeElement?.dataset?.fi) CFG={objectif:x.objectif??66,objMoy:x.objMoy??1500,fiEmails:x.fiEmails||{}}; if(tab==='ventes'){const a=document.getElementById('vobj'),b=document.getElementById('vobjm');if(a)a.value=CFG.objectif;if(b)b.value=CFG.objMoy;ventesSummary()}}} }); }catch(e){} })();
 const todayTO=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'});
 const redrawAll=k=>{if(k)paint(k);kpis();matrix();tabsUI();if(tab==='ventes')ventesView();else if(!document.activeElement?.dataset?.k)list()};
@@ -412,13 +455,23 @@ async function addSale(){
   const inp=document.getElementById('v-rep-'+k);if(inp)inp.focus({preventScroll:true});
   if(!await saveNote(k)){delete NOTES[k];ventesView();tabsUI()}
 }
+// ✕ au bout de chaque ligne de ventes : supprimer un doublon ou une mauvaise entrée (après confirmation).
+// Auto de l'inventaire → redevient disponible (Vendu décoché ; infos de vente effacées sauf no de stock et version) ;
+// vente ajoutée à la main (+) → effacée ; autre vente hors inventaire (importée de BOARD 2026, annulée…) → retirée du board
+// (Vendu décoché, fiche gardée) pour que l'import de BOARD 2026 ne la remette pas.
 async function delSale(k){
-  const n=NOTES[k];if(!DB||!isManual(k)||!n)return;
-  const x=n.vente||{},nm=String(x.client||'').trim();
-  if(!confirm((nm?`Effacer la vente de ${nm} ?`:'Effacer cette ligne ?')+(x.calId?'\nL\'événement de livraison reste dans Google Agenda.':'')))return;
-  [vTimers,calTimers,timers].forEach(T=>clearTimeout(T[k]));delete NOTES[k];ventesView();tabsUI();
-  try{await DB.collection('suivi').doc(k).delete();setStatus('Ligne effacée');scheduleSheet()}
-  catch(e){NOTES[k]=n;ventesView();tabsUI();saveErr(e)}
+  const n=NOTES[k];if(!DB||!n)return;
+  const x=n.vente||{},v=vehOf(k)||{},inv=isInvKey(k),t=s=>String(s??'').trim();
+  const what=[t(x.client)||t(n.comment),t(x.model)||v.model||'',t(x.stock)||STOCK[v.vin]||''].filter(Boolean).join(' · ');
+  if(!confirm('Supprimer cette ligne ?'+(what?'\n'+what:'')+(inv?'\nL\'auto redevient disponible en inventaire.':'')+(x.calId?'\nL\'événement de livraison reste dans Google Agenda.':'')))return;
+  [vTimers,calTimers,timers].forEach(T=>clearTimeout(T[k]));
+  const keep={};if(t(x.stock))keep.stock=x.stock;if(t(x.gamme))keep.gamme=x.gamme;
+  const next=inv?{vendu:false,comment:'',soldAt:'',vente:keep}:isManual(k)?null:{...n,vendu:false,vente:{...x,retireLe:todayTO()}};
+  if(next)NOTES[k]=next;else delete NOTES[k];
+  redrawAll(k);
+  try{if(next)await DB.collection('suivi').doc(k).set(await noteDoc(next));else await DB.collection('suivi').doc(k).delete();
+    setStatus(inv?'Ligne supprimée : l\'auto est de nouveau disponible en inventaire':'Ligne supprimée');scheduleSheet()}
+  catch(e){NOTES[k]=n;redrawAll(k);saveErr(e)}
 }
 document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('[data-addsale]');if(a){addSale();return}const d=e.target.closest&&e.target.closest('[data-delsale]');if(d)delSale(d.dataset.delsale)});
 
@@ -465,6 +518,21 @@ async function releaseCancelled(){
     setStatus(`${todo.length} vente${s} annulée${s} : auto${s} remise${s} en inventaire`); scheduleSheet();
   }catch(e){bak.forEach(([k,n])=>{if(n===undefined)delete NOTES[k];else NOTES[k]=n})}
   finally{RELEASING=false;Object.keys(NOTES).forEach(paint);kpis();matrix();tabsUI();if(tab==='ventes'){if(!document.activeElement?.dataset?.vk)ventesView();else ventesSummary()}else if(!document.activeElement?.dataset?.k)list()}
+}
+// Rattrapage (admin) : ventes entrées avant la règle des noms (ex. « ALEX M », « MAHER ») → réécrites avec le bon nom (« ALEX »)
+let RENAMING=false;
+async function normalizeNames(){
+  if(RENAMING||!DB||!USER)return;
+  try{if(!(await Promise.resolve(USER.canEdit())))return}catch(e){return}
+  const ae=document.activeElement?.dataset||{};
+  const todo=Object.entries(NOTES).filter(([k,n])=>n&&n.vente&&canonVente(n.vente)!==n.vente&&ae.vk!==k);
+  if(!todo.length)return; RENAMING=true;
+  try{
+    const sets=todo.map(([k,n])=>{const m={...n,vente:canonVente(n.vente)};NOTES[k]=m;return [k,m]});
+    for(let i=0;i<sets.length;i+=400)await writeNotes(sets.slice(i,i+400));
+    const s=sets.length>1?'s':''; setStatus(`Règle des noms appliquée à ${sets.length} vente${s} (ALEX M, MAHER → ALEX)`); scheduleSheet();
+  }catch(e){todo.forEach(([k,n])=>{NOTES[k]=n})}
+  finally{RENAMING=false;if(tab==='ventes'){if(!document.activeElement?.dataset?.vk)ventesView();else ventesSummary()}}
 }
 
 // ---- Copie en direct vers le Google Sheet du mois ----
@@ -583,7 +651,7 @@ async function syncBoard26(){
         const dF=parseFrDate(val(12),ym),dL=parseFrDate(val(13),ym);
         if(dF)setF('dateFi',dF);if(dL&&dL.slice(0,7)>=(n0.soldAt||'').slice(0,7))setF('livraison',dL);
         setF('front',val(14),true);setF('frontM',val(15),true);setF('back',val(16),true);
-        ['rep','fi','dir'].forEach((f,j)=>setF(f,val(1+j)));
+        ['rep','fi','dir'].forEach((f,j)=>setF(f,canonNom(val(1+j)))); // règle des noms : « ALEX M » de la feuille = « ALEX » du board
         if(chg){NOTES[exist]={...n0,vente:v0};await saveNote(exist);compta++}
       }
       if(exist){ // ligne verte → Comptabilisé
@@ -596,7 +664,7 @@ async function syncBoard26(){
       if(!k)k='IMP-'+ym+'-'+nm.slice(0,40);
       const statut=sec==='cancel'?'cancel':(color||'vendu');
       const soldAt=dateFi||(sec==='carry'?prevYM+'-28':today);
-      const vente={rep:val(1),fi:val(2),dir:val(3),source:val(4),client,model:val(6),gamme:val(7),couleur:val(8),annee:val(9),stock,niv:val(11),dateFi,livraison:liv,front:val(14),frontM:val(15),back:val(16),rdr:val(20),statut,importe:`BOARD 2026 ${used} ligne ${i+1}`};
+      const vente={rep:canonNom(val(1)),fi:canonNom(val(2)),dir:canonNom(val(3)),source:val(4),client,model:val(6),gamme:val(7),couleur:val(8),annee:val(9),stock,niv:val(11),dateFi,livraison:liv,front:val(14),frontM:val(15),back:val(16),rdr:val(20),statut,importe:`BOARD 2026 ${used} ligne ${i+1}`};
       Object.keys(vente).forEach(f=>{if(vente[f]==='')delete vente[f]});
       NOTES[k]={vendu:true,comment:client,soldAt,vente};byName[nm]=k;if(/^\d{6}$/.test(stock))byStock[stock]=k;VKEYS.clear();await saveNote(k);added++;
     }

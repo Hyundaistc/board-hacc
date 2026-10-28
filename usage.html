@@ -107,6 +107,17 @@ td.idx{white-space:nowrap}
 .delrow:hover{color:var(--bad);background:var(--bad-bg)}
 .veh tr.newrow td{animation:newrow 2.6s ease-out}
 @keyframes newrow{0%,35%{background:var(--warn-bg)}}
+/* Barre du haut des tableaux de ventes : on la glisse pour voir les colonnes de droite ; elle reste en haut de l'écran pendant qu'on descend dans le tableau */
+.box.ts-host{overflow:clip}
+.tscroll{position:sticky;top:0;z-index:3;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--line);cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.ttrack{position:relative;height:10px;border-radius:5px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
+.tthumb{position:absolute;top:0;bottom:0;left:0;border-radius:5px;background:var(--muted);opacity:.6;cursor:grab;transition:opacity .15s,background-color .15s}
+.tscroll:hover .tthumb{opacity:.85}
+.tthumb.drag{opacity:1;background:var(--accent);cursor:grabbing}
+/* ✕ au bout de chaque ligne de ventes (supprimer un doublon ou une erreur) : colonne collée à droite, toujours visible */
+.veh th.c-del,.veh td.c-del{position:sticky;right:0;z-index:1;width:1%;padding:4px 6px;text-align:center;background:var(--surface);box-shadow:inset 1px 0 0 var(--line)}
+.veh th.c-del{background:var(--bg)}
+.veh td.c-del .delrow{font-size:.85rem;padding:4px 7px;margin:0}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.vboards{grid-template-columns:1fr}}
 
 /* ---- Coque de l'application ---- */
@@ -151,7 +162,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='5';window.HACC_APP_SCRIPT='usage.js';window.HACC_DB_PREFIX='usage_';</script>
+<script>window.HACC_VERSION='6';window.HACC_APP_SCRIPT='usage.js';window.HACC_DB_PREFIX='usage_';</script>
 <script src="shim.js?v=2"></script>
 </head>
 <body>

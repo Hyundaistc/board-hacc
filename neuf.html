@@ -143,6 +143,17 @@ input.vi[type=date]{width:128px}
 .delrow:hover{color:var(--bad);background:var(--bad-bg)}.delrow:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .vt tr.newrow td{animation:newrow 2.6s ease-out}
 @keyframes newrow{0%,35%{background:var(--warn-bg)}}
+/* Barre du haut des tableaux de ventes : on la glisse pour voir les colonnes de droite ; elle reste en haut de l'écran pendant qu'on descend dans le tableau */
+.model.ts-host{overflow:clip}
+.tscroll{position:sticky;top:0;z-index:3;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--line);cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.ttrack{position:relative;height:10px;border-radius:5px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
+.tthumb{position:absolute;top:0;bottom:0;left:0;border-radius:5px;background:var(--muted);opacity:.6;cursor:grab;transition:opacity .15s,background-color .15s}
+.tscroll:hover .tthumb{opacity:.85}
+.tthumb.drag{opacity:1;background:var(--accent);cursor:grabbing}
+/* ✕ au bout de chaque ligne de ventes (supprimer un doublon ou une erreur) : colonne collée à droite, toujours visible */
+.vt th.c-del,.vt td.c-del{position:sticky;right:0;z-index:1;width:1%;padding:4px 6px;text-align:center;background:var(--surface);box-shadow:inset 1px 0 0 var(--line)}
+.vt th.c-del{background:var(--bg)}
+.vt td.c-del .delrow{font-size:.85rem;padding:4px 7px;margin:0}
 @media (max-width:900px){.kpis.vk{grid-template-columns:repeat(2,minmax(0,1fr))}.vboards{grid-template-columns:1fr}}
 .hacc{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.haccbtn{font:inherit;font-size:.8rem;font-weight:600;border:0;border-radius:6px;padding:7px 12px;background:var(--accent);color:var(--surface);cursor:pointer}.haccbtn:disabled{opacity:.6;cursor:wait}.haccbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}#haccmsg.bad{color:var(--bad)}
 footer{font-size:.78rem;color:var(--muted)}
@@ -190,7 +201,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='4';window.HACC_APP_SCRIPT='app.js';window.HACC_DB_PREFIX='';</script>
+<script>window.HACC_VERSION='5';window.HACC_APP_SCRIPT='app.js';window.HACC_DB_PREFIX='';</script>
 <script src="shim.js?v=2"></script>
 </head>
 <body>
