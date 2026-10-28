@@ -35,11 +35,12 @@
     { id: 'comeback', titre: 'Comeback', svg: icone('.nav-i[data-route="comeback"] svg'), aVenir: true },
     { href: 'neuf.html#stock', titre: 'Inventaire neuf', sous: 'Stock, arrivages et ventes', svg: icone('#tog-inv svg') },
     { href: 'usage.html', titre: 'Inventaire usagé', sous: 'Occasions D2C et ventes', svg: icone('#tog-inv svg') },
+    { href: 'wholesale.html', titre: 'Ventes wholesale', sous: 'Autos vendues aux marchands · profit du mois', svg: icone('#tog-inv svg') },
     { id: 'evaluation', titre: 'Évaluation', svg: icone('.nav-i[data-route="evaluation"] svg'), aVenir: true }
   ];
 
   // ---------- Données : mêmes sources et mêmes règles que les inventaires ----------
-  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, csi: undefined, err: false };
+  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, wsuivi: null, cfgW: null, csi: undefined, err: false };
   const lireInv = s => { const x = s && s.exists ? (s.data() || {}) : {}; let rows = null; try { rows = JSON.parse(x.json || 'null'); } catch (e) {} return { rows: Array.isArray(rows) ? rows : [], date: x.date || '', at: x.at || '' }; };
   const lireCol = s => { const m = {}; s.docs.forEach(d => { m[d.id] = d.data() || {}; }); return m; };
   const surErreur = () => { D.err = true; peindre(); };
@@ -50,6 +51,9 @@
     DB.doc('usage_inventaire/actuel').onSnapshot(s => { const r = lireInv(s); D.uinv = r.rows; D.uinvAt = r.at; peindre(); }, surErreur);
     DB.collection('usage_suivi').onSnapshot(s => { D.usuivi = lireCol(s); peindre(); }, surErreur);
     DB.doc('usage_config/ventes').onSnapshot(s => { D.cfgU = s.exists ? (s.data() || {}) : {}; peindre(); }, surErreur);
+    // Ventes wholesale (wholesale.js) : profit du mois = vendant − coûtant, annulées exclues
+    DB.collection('wholesale_suivi').onSnapshot(s => { D.wsuivi = lireCol(s); peindre(); }, () => { D.wsuivi = {}; peindre(); });
+    DB.doc('wholesale_config/ventes').onSnapshot(s => { D.cfgW = s.exists ? (s.data() || {}) : {}; peindre(); }, () => { D.cfgW = {}; peindre(); });
     DB.doc('config/csi').onSnapshot(s => { D.csi = s.exists ? (s.data() || {}) : null; peindre(); }, () => { D.csi = null; peindre(); });
   }
 
@@ -72,8 +76,13 @@
       c.uDispo = dispo.length; c.uLigne = dispo.filter(r => r.live).length; c.u60 = dispo.filter(r => +r.days > 60).length;
       c.uVentes = Object.values(D.usuivi).filter(n => n && n.vendu && (n.soldAt || '').slice(0, 7) === mois && active(n)).length;
     }
+    if (D.wsuivi) {
+      const w = Object.values(D.wsuivi).filter(n => n && n.vendu && (n.soldAt || '').slice(0, 7) === mois && active(n));
+      c.wVentes = w.length; c.wProfit = Math.round(w.reduce((a, n) => a + (num((n.vente || {}).vendant) - num((n.vente || {}).coutant)), 0));
+    }
     if (D.cfgN) c.objN = num(D.cfgN.objectif ?? 66);
     if (D.cfgU) c.objU = num(D.cfgU.objectif ?? 50);
+    if (D.cfgW) c.objW = num(D.cfgW.objectif ?? 40000);
     return c;
   }
 
@@ -95,14 +104,15 @@
     const obj = (n, o) => n != null && o ? `<small> / ${nb(o)}</small>` : '';
     const pct = (n, o) => n != null && o ? Math.round(n / o * 100) : null;
     const barre = p => p == null ? '' : `<div class="bar" role="img" aria-label="${p} % de l'objectif"><i style="width:${Math.min(100, p)}%"></i></div>`;
-    const pN = pct(c.nVentes, c.objN), pU = pct(c.uVentes, c.objU);
+    const pN = pct(c.nVentes, c.objN), pU = pct(c.uVentes, c.objU), pW = c.wProfit != null && c.objW ? Math.max(0, Math.round(c.wProfit / c.objW * 100)) : null;
     el.innerHTML = [
       tuile('neuf.html#stock', 'Neuf en stock', v(c.nDispo), c.nRetires ? 'disponibles · ' + pluriel(c.nRetires, 'vendu retiré', 'vendus retirés') : 'disponibles'),
       tuile('neuf.html#ventes', 'Ventes neuf · ' + moisNom, v(c.nVentes) + obj(c.nVentes, c.objN), pN == null ? 'ce mois-ci' : pN + ' % de l\'objectif', barre(pN)),
       tuileCsi('ventes', moisNom),
       tuile('usage.html', 'Usagé en stock', v(c.uDispo), c.uLigne != null ? 'disponibles · ' + nb(c.uLigne) + ' en ligne · ' + nb(c.u60) + ' de plus de 60 j' : 'disponibles'),
       tuile('usage.html#ventes', 'Ventes usagé · ' + moisNom, v(c.uVentes) + obj(c.uVentes, c.objU), pU == null ? 'ce mois-ci' : pU + ' % de l\'objectif', barre(pU)),
-      tuileCsi('service', moisNom)
+      tuileCsi('service', moisNom),
+      tuile('wholesale.html', 'Wholesale · ' + moisNom, c.wProfit == null ? v(c.wProfit) : (c.wProfit < 0 ? '−' : '') + nb(Math.abs(c.wProfit)) + ' $' + (c.objW ? `<small> / ${nb(c.objW)} $</small>` : ''), c.wVentes == null ? 'profit du mois' : pluriel(c.wVentes, 'auto vendue', 'autos vendues') + (pW == null ? '' : ' · ' + pW + ' % de l\'objectif'), barre(pW))
     ].join('');
     const maj = $('maj');
     if (maj) maj.textContent = [D.invAt && 'Neuf : HACC du ' + quand(D.invAt), D.uinvAt && 'Usagé : D2C du ' + quand(D.uinvAt)].filter(Boolean).join(' · ');

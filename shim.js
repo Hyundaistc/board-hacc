@@ -95,7 +95,8 @@
 
   // Chaque page a son « espace » dans la base : '' = inventaire neuf, 'usage_' = inventaire usagé
   const PFX = window.HACC_DB_PREFIX || '';
-  const wrapDb = raw => !PFX ? raw : { collection: c => raw.collection(PFX + c), doc: p => raw.doc(PFX + p), batch: () => raw.batch() };
+  // rawDoc : lecture d'un document d'une autre page (ex. l'inventaire usagé depuis Ventes wholesale), sans le préfixe
+  const wrapDb = raw => !PFX ? raw : { collection: c => raw.collection(PFX + c), doc: p => raw.doc(PFX + p), batch: () => raw.batch(), rawDoc: p => raw.doc(p) };
 
   window.claude = {
     use: async name => {

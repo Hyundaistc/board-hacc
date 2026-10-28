@@ -1,6 +1,6 @@
 # Board HACC · Hyundai St-Constant
 
-Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux deux inventaires : **Inventaire neuf** (board HACC : stock, arrivages, commandes, ventes neuf) et **Inventaire usagé** (D2C : occasions, coûtants, ventes usagés). La section CSI lit BoostCX ; Comeback et Évaluation sont prévues dans le menu.
+Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux inventaires et aux ventes : **Inventaire neuf** (board HACC : stock, arrivages, commandes, ventes neuf), **Inventaire usagé** (D2C : occasions, coûtants, ventes usagés) et **Ventes wholesale** (autos vendues aux marchands et aux encans, profit vs objectif). La section CSI lit BoostCX ; Comeback et Évaluation sont prévues dans le menu.
 
 **Accès privé, sur invitation** : l'admin invite chaque personne via « Gérer les accès ».
 
@@ -16,7 +16,9 @@ Une **page d'accueil** (menu à gauche, chiffres clés du jour) mène aux deux i
 | `index.html` / `accueil.js` | Page d'accueil : menu des sections, accueil personnalisé, chiffres clés (renvoie les anciens liens `#import`, `#stock`… vers `neuf.html`) |
 | `csi.js` | Section CSI (onglets Ventes et Service) : scores NPS, FRFT, Effective Records Rate, questions clés, par conseiller, sondages ; favori « ⟳ CSI BoostCX » (bouton « Mettre à jour depuis BoostCX ») qui lit BoostCX et enregistre dans `config/csi*` |
 | `neuf.html` | Inventaire neuf (HACC) |
-| `usage.html` / `usage.js` | Inventaire usagé (D2C) |
+| `usage.html` / `usage.js` | Inventaire usagé (D2C) ; bouton « Mettre à jour depuis D2C » (favori ⟳ Inventaire D2C) |
+| `wholesale.html` / `wholesale.js` | Ventes wholesale : saisie directe, profit = vendant − coûtant, acheteurs, objectif de profit du mois (base `wholesale_suivi`, `wholesale_config`) |
+| `sauvegarde/Code.gs` | Google Apps Script (compte de l'admin) : chaque jour vers 9 h, copie Excel de toutes les ventes (neuf, usagé, wholesale) dans le dossier Drive « Sauvegardes ventes (board) » |
 | `app.js` | Logique du board (stock, arrivages, ventes) |
 | `shim.js` | Branche le board sur Firebase et les API Google |
 | `firebase-config.js` | Configuration Firebase + liste des admins |
