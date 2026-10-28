@@ -85,7 +85,10 @@ setTimeout(()=>{stockStatus();loadStock()},0);
 const NOTES={}; let DB=null, USER=null;
 const keyOf=v=>v._k?v._k:(v.vin?v.vin:'CMD'+v.order);
 const VKEYS=new Set();
-function extraVehicles(){if(!VKEYS.size)V.forEach(v=>VKEYS.add(keyOf(v)));return Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&!VKEYS.has(k)).map(([k,n])=>{const x=n.vente||{};return {_k:k,g:'X',vin:'',niv:x.niv||'',model:x.model||'—',ver:x.gamme||'',ext:x.couleur||'',int:'',year:x.annee||'',order:'',loc:'',place:'',sold:'',eta:'',age:0,pmon:'',recall:0}})}
+// Ventes hors inventaire : MAN-… = ajoutée à la main (bouton +), CX-… = vente annulée d'une auto remise en inventaire, IMP-… = importée de BOARD 2026
+const isManual=k=>String(k||'').startsWith('MAN-');
+const isInvKey=k=>{if(!VKEYS.size)V.forEach(v=>VKEYS.add(keyOf(v)));return VKEYS.has(k)};
+function extraVehicles(){if(!VKEYS.size)V.forEach(v=>VKEYS.add(keyOf(v)));return Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&!VKEYS.has(k)).map(([k,n])=>{const x=n.vente||{};return {_k:k,g:'X',vin:'',niv:x.niv||'',model:x.model||(isManual(k)?'':'—'),ver:x.gamme||'',ext:x.couleur||'',int:'',year:x.annee||'',order:'',loc:'',place:'',sold:'',eta:'',age:0,pmon:'',recall:0}})}
 const vehOf=k=>V.find(z=>keyOf(z)===k)||extraVehicles().find(z=>z._k===k);
 const trackHead='<th class="c-sold">Vendu</th><th class="c-com">Commentaire</th>';
 const trackHeadD='<th class="c-sold">Vendu</th><th class="c-date">Date</th><th class="c-com">Commentaire</th>'; // En stock : date de vente après Vendu
@@ -100,11 +103,19 @@ function paint(k){
   document.querySelectorAll(`input[type=date][data-dk="${k}"]`).forEach(i=>{i.disabled=!DB||!n.vendu;if(document.activeElement!==i)i.value=n.vendu?(n.soldAt||''):''});
 }
 const timers={};
+const noteDoc=async n=>({vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()});
+const saveErr=e=>setStatus(e&&e.code==='not_granted'||e&&(e.code==='permission_denied'||e.code==='permission-denied')?'Lecture seule : demandez un accès à l\'administratrice pour modifier':'Non enregistré, réessayez');
 async function saveNote(k){
-  if(!DB) return;
+  if(!DB) return false;
   const n=NOTES[k]||{};
-  try{ await DB.collection('suivi').doc(k).set({vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()}); setStatus('Enregistré'); scheduleSheet(); }
-  catch(e){ setStatus(e&&e.code==='not_granted'||e&&(e.code==='permission_denied'||e.code==='permission-denied')?'Lecture seule : demandez un accès à l\'administratrice pour modifier':'Non enregistré, réessayez'); }
+  try{ await DB.collection('suivi').doc(k).set(await noteDoc(n)); setStatus('Enregistré'); scheduleSheet(); return true; }
+  catch(e){ saveErr(e); return false; }
+}
+// Écrit plusieurs fiches d'un seul coup (tout ou rien) : sets = [[clé, fiche]…], dels = [clé…]
+async function writeNotes(sets,dels=[]){
+  const col=DB.collection('suivi'), b=DB.batch?DB.batch():null;
+  if(!b){for(const [k,n] of sets)await col.doc(k).set(await noteDoc(n));for(const k of dels)await col.doc(k).delete();return}
+  for(const [k,n] of sets)b.set(col.doc(k),await noteDoc(n)); for(const k of dels)b.delete(col.doc(k)); await b.commit();
 }
 function setStatus(t){const el=document.getElementById('savestate'); if(el){el.textContent=t;clearTimeout(el._t);el._t=setTimeout(()=>el.textContent=DB?'Vendu et commentaires partagés avec l\'équipe':'',3000)}}
 document.addEventListener('change',e=>{const i=e.target;if(i.matches('input[type=checkbox][data-k]')){const k=i.dataset.k;const o=NOTES[k]||{};NOTES[k]={...o,vendu:i.checked,soldAt:i.checked?(o.soldAt||new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'})):o.soldAt};paint(k);saveNote(k);if(tab==='ventes')list();kpis();matrix();tabsUI()}
@@ -119,8 +130,9 @@ document.addEventListener('input',e=>{const i=e.target;if(i.matches('input[type=
   let first=true;
   DB.collection('suivi').onSnapshot(snap=>{
     const seen=new Set();
+    if(typeof snap.docChanges==='function') snap.docChanges().forEach(ch=>{if(ch.type==='removed')delete NOTES[ch.doc.id]}); // fiche effacée ailleurs (✕, vente réactivée)
     snap.docs.forEach(d=>{if(!d.exists)return;seen.add(d.id);const x=d.data()||{};const focused=document.activeElement?.dataset?.k===d.id&&document.activeElement.type==='text';const editing=document.activeElement?.dataset?.vk===d.id;NOTES[d.id]={vendu:!!x.vendu,comment:focused?(NOTES[d.id]?.comment??x.comment):(x.comment||''),soldAt:x.soldAt||'',vente:editing?(NOTES[d.id]?.vente||{}):(x.vente||{})}});
-    if(first){first=false;render();incoming();} else {Object.keys(NOTES).forEach(paint); kpis(); matrix(); if(tab==='ventes'&&!document.activeElement?.dataset?.vk) list(); else if(tab==='ventes') ventesSummary(); tabsUI();}
+    if(first){first=false;render();incoming();releaseCancelled();} else {Object.keys(NOTES).forEach(paint); kpis(); matrix(); if(tab==='ventes'&&!document.activeElement?.dataset?.vk) list(); else if(tab==='ventes') ventesSummary(); tabsUI();}
   },err=>setStatus('Synchronisation interrompue, rechargez la page'));
 })();
 
@@ -165,7 +177,7 @@ function tabsUI(){
   document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;save();history.replaceState(null,'','#'+tab);render()});
   const L={
     arrivages:'Par modèle : autos en transit triées par ETA, puis commandes triées par mois de production. <span class="pill p-ok">≤ 7 j</span><span class="pill p-n">8–21 j</span><span class="pill p-warn">22 j +</span><span class="pill p-bad">ETA dépassé</span>',
-    ventes:'Chaque auto cochée Vendu arrive ici automatiquement. Complétez représentant, F&amp;I, client, front et back : tout est partagé avec l\'équipe.',
+    ventes:'Chaque auto cochée Vendu arrive ici automatiquement. Pour une vente hors inventaire, cliquez <b>+</b> à côté de « Ventes de … ». Complétez représentant, F&amp;I, client, front et back : tout est partagé avec l\'équipe.',
     stock:'Par modèle, du plus vieux au plus récent. <span class="pill p-ok">0–89 j</span><span class="pill p-warn">90–179 j</span><span class="pill p-hot">180–364 j</span><span class="pill p-bad">365 j +</span>'
   };
   document.getElementById('legend').innerHTML=L[tab]+(model?` <button class="chip" id="clr">${esc(model)} ✕</button>`:'');
@@ -244,7 +256,14 @@ function salesRows(){
    .sort((a,b)=>(a.n.soldAt||'').localeCompare(b.n.soldAt||'')||a.v.model.localeCompare(b.v.model));
 }
 function prevMonth(m){if(!m)return null;const y=+m.slice(0,4),mo=+m.slice(5);return mo===1?`${y-1}-12`:`${y}-${String(mo-1).padStart(2,'0')}`}
-function carryRows(){const p=prevMonth(VMONTH);return p?allSales().filter(r=>saleMonth(r.n)===p&&(r.n.vente?.livraison||'').slice(0,7)===VMONTH):[]}
+function nextMonth(m){const y=+m.slice(0,4),mo=+m.slice(5);return mo===12?`${y+1}-01`:`${y}-${String(mo+1).padStart(2,'0')}`}
+// Carry over — règle dès novembre 2026 : une vente du mois précédent livrée APRÈS le 2 du mois devient un carry over de ce mois ;
+// livrée le 1er ou le 2, elle reste dans son mois de vente et compte dans ses livraisons. Avant novembre : vente livrée dans le mois.
+const CARRY_DES='2026-11';
+const d10=d=>String(d||'').slice(0,10);
+function isCarryLiv(liv,m){const l=d10(liv);if(!m||!/^\d{4}-\d{2}-\d{2}$/.test(l))return false;return m>=CARRY_DES?l>m+'-02':l.slice(0,7)===m}
+function inMonthLiv(d,m){d=d10(d);if(!d||!m)return false;if(d.slice(0,7)===m)return true;const nx=nextMonth(m);return nx>=CARRY_DES&&(d===nx+'-01'||d===nx+'-02')}
+function carryRows(){const p=prevMonth(VMONTH);return p?allSales().filter(r=>saleMonth(r.n)===p&&isCarryLiv(r.n.vente?.livraison,VMONTH)):[]}
 const hasFM=x=>!!String((x||{}).frontM??'').trim();
 function ventesSummary(){
   const el=document.getElementById('vsum'); if(!el) return;
@@ -252,7 +271,7 @@ function ventesSummary(){
   const mrows=salesRows().filter(alive), crows=carryRows().filter(alive), live=[...mrows,...crows];
   const comp=live.filter(r=>hasFM(r.n.vente)), fmTot=comp.reduce((a,r)=>a+num(r.n.vente.frontM),0);
   const tf=live.reduce((a,r)=>a+effF(r.n.vente),0), bk=live.map(r=>num(r.n.vente?.back)), tb=bk.reduce((a,b)=>a+b,0), nb=bk.filter(x=>x).length;
-  const livre=live.filter(r=>(r.n.vente?.livraison||'').slice(0,7)===VMONTH||(!VMONTH&&r.n.vente?.livraison)).length, rdr=[...salesRows(),...carryRows()].filter(r=>r.n.vente?.rdrOk&&(!VMONTH||(r.n.vente.rdrAt||'').slice(0,7)===VMONTH)).length;
+  const livre=live.filter(r=>VMONTH?inMonthLiv(r.n.vente?.livraison,VMONTH):!!r.n.vente?.livraison).length, rdr=[...salesRows(),...carryRows()].filter(r=>r.n.vente?.rdrOk&&(!VMONTH||inMonthLiv(r.n.vente.rdrAt,VMONTH))).length;
   const obj=num(CFG.objectif)||0, pct=obj?Math.round(mrows.length/obj*100):0;
   const group=(f)=>{const m={};live.forEach(r=>{const x=r.n.vente||{};const names=String(x[f]||'').toUpperCase().split(/[-\/]/).map(z=>z.trim()).filter(Boolean);const w=names.length?1/names.length:0;names.forEach(nm=>{m[nm]=m[nm]||{d:0,fm:0,fc:0,b:0,bc:0};m[nm].d+=w;if(hasFM(x)){m[nm].fm+=num(x.frontM)*w;m[nm].fc+=w}if(num(x.back)){m[nm].b+=num(x.back)*w;m[nm].bc+=w}})});return Object.entries(m).sort((a,b)=>b[1].d-a[1].d)};
   const fmtD=d=>Number.isInteger(d)?d:d.toFixed(1);
@@ -319,7 +338,7 @@ const rowCls=x=>'st-'+(x.statut||'vendu')+(x.livraison?' livre':'')+(String(x.fr
 function vIn(k,f,val,attrs=''){return `<input ${attrs.includes('class=')?'':'class="vi"'} id="v-${f}-${k}" data-vk="${k}" data-f="${f}" value="${esc(val??'')}" ${attrs} ${DB?'':'disabled'} aria-label="${f}">`}
 function ventesView(){
   let rows=salesRows();
-  const months=[...new Set([SNAP.slice(0,7),...Object.values(NOTES).filter(n=>n.vendu).map(saleMonth)])].sort().reverse();
+  const months=[...new Set([SNAP.slice(0,7),todayTO().slice(0,7),...Object.values(NOTES).filter(n=>n.vendu).map(saleMonth)])].sort().reverse();
   const head=`<div class="vhead"><h2>Ventes neuf ${VMONTH?MOIS_L[+VMONTH.slice(5)-1]+' '+VMONTH.slice(0,4):'— tous les mois'}</h2>
     <label>Mois <select id="vmonth">${months.map(m=>`<option value="${m}" ${m===VMONTH?'selected':''}>${MOIS_L[+m.slice(5)-1]} ${m.slice(0,4)}</option>`).join('')}<option value="" ${!VMONTH?'selected':''}>Tous</option></select></label>
     <label>Objectif <input id="vobj" class="vi s" value="${esc(CFG.objectif)}" inputmode="numeric" ${DB?'':'disabled'}></label>
@@ -333,9 +352,9 @@ function ventesView(){
   rows=rows.filter(r=>!isCx(r));
   const rowHtml=(r,i)=>{const v=r.v,k=r.k,x=r.n.vente||{},st=x.statut||'vendu',tot=st==='cancel'?0:effF(x)+num(x.back);
     const dv=(f,def)=>(x[f]!=null&&String(x[f]).trim()!=='')?x[f]:def;
-    return `<tr data-vrow="${k}" class="${rowCls(x)}"><td class="idx">${i+1}</td>
+    return `<tr data-vrow="${k}" class="${rowCls(x)}"><td class="idx">${i+1}${isManual(k)&&DB?`<button type="button" class="delrow" data-delsale="${k}" title="Effacer cette vente ajoutée à la main" aria-label="Effacer la vente ${i+1}">✕</button>`:''}</td>
     <td>${vIn(k,'rep',x.rep,'list="dl-rep"')}</td><td>${vIn(k,'fi',x.fi,'list="dl-fi" class="vi s"')}</td><td>${vIn(k,'dir',x.dir,'list="dl-dir"')}</td><td>${vIn(k,'source',x.source,'list="dl-src"')}</td>
-    <td>${vIn(k,'client',(x.client&&x.client.trim())?x.client:(r.n.comment||''),'class="vi l" placeholder="Écrire dans Commentaire"')}</td>
+    <td>${vIn(k,'client',(x.client&&x.client.trim())?x.client:(r.n.comment||''),'class="vi l" placeholder="'+(isInvKey(k)?'Écrire dans Commentaire':'Nom du client')+'"')}</td>
     <td>${vIn(k,'model',dv('model',v.model),'list="dl-model" class="vi b"')}</td><td>${vIn(k,'gamme',dv('gamme',v.ver),'class="vi l"')}</td><td>${vIn(k,'couleur',dv('couleur',colorName(v.ext)),'class="vi l2"')}</td><td>${vIn(k,'annee',dv('annee',v.year),'inputmode="numeric" class="vi s"')}</td>
     <td>${vIn(k,'stock',dv('stock',STOCK[v.vin]||''),'class="vi m stkin" placeholder="'+(v.order?'CMD':'à entrer')+'"')}</td><td>${vIn(k,'niv',dv('niv',v.vin?v.vin.slice(-8):''),'class="vi m mono"')}</td>
     <td>${vIn(k,'dateFi',x.dateFi,'type="date"')}</td><td>${vIn(k,'livraison',x.livraison,'type="date"')}</td><td class="c-sold"><input type="checkbox" class="rdrcb" id="v-rdrOk-${k}" data-vk="${k}" data-f="rdrOk" aria-label="RDR fait" title="${x.rdrAt?'RDR le '+esc(x.rdrAt):'Cocher quand le RDR est fait'}" ${x.rdrOk?'checked':''} ${DB?'':'disabled'}></td><td>${vIn(k,'heure',x.heure,'type="time" class="vi t"')}</td><td id="cal-${k}" class="calc">${calCell(r)}</td>
@@ -344,11 +363,12 @@ function ventesView(){
     <td><select class="vi" id="v-statut-${k}" data-vk="${k}" data-f="statut" ${DB?'':'disabled'}>${STATUTS.map(([val,l])=>`<option value="${val}" ${st===val?'selected':''}>${l}</option>`).join('')}</select></td>
     <td>${vIn(k,'soldAt',r.n.soldAt||SNAP,'type="date"')}</td></tr>`};
   const thead=`<thead><tr><th>#</th><th>Représentant</th><th>F&amp;I</th><th>Dir</th><th>Source</th><th>Nom du client</th><th>Modèle</th><th>Gamme</th><th>Couleur</th><th>Année</th><th>Stock</th><th>NIV</th><th>Date F&amp;I</th><th>Livraison</th><th>RDR</th><th>Heure</th><th>Agenda</th><th class="num">Front</th><th class="num">Front Marjo</th><th class="num">Back</th><th class="num">Total</th><th>Statut</th><th>Vendu le</th></tr></thead>`;
-  const carryHtml=prevM?`<div class="sec-title">Carry over de ${MOIS_L[+prevM.slice(5)-1]} · vendus en ${MOIS_L[+prevM.slice(5)-1]}, livrés en ${MOIS_L[+VMONTH.slice(5)-1]} (${carry.length})</div><section class="model carry"><div class="tbl"><table class="veh vt">${thead}<tbody>${carry.map((r,i)=>rowHtml(r,i).replace('data-vrow=','data-vrow-c="1" data-vrow=')).join('')||`<tr><td colspan="23" class="empty-row">Aucun carry over : les ventes de ${MOIS_L[+prevM.slice(5)-1]} apparaissent ici dès qu'on entre une date de livraison en ${MOIS_L[+VMONTH.slice(5)-1]}.</td></tr>`}</tbody></table></div></section><div class="sec-title">Ventes de ${MOIS_L[+VMONTH.slice(5)-1]} (${rows.length})</div>`:'';
+  const pN=prevM?MOIS_L[+prevM.slice(5)-1]:'', cN=VMONTH?MOIS_L[+VMONTH.slice(5)-1]:'', livN=VMONTH>=CARRY_DES?`après le 2 ${cN}`:`en ${cN}`;
+  const carryHtml=prevM?`<div class="sec-title">Carry over de ${pN} · vendus en ${pN}, livrés ${livN} (${carry.length})</div><section class="model carry"><div class="tbl"><table class="veh vt">${thead}<tbody>${carry.map((r,i)=>rowHtml(r,i).replace('data-vrow=','data-vrow-c="1" data-vrow=')).join('')||`<tr><td colspan="23" class="empty-row">Aucun carry over : les ventes de ${pN} apparaissent ici dès qu'on entre une date de livraison ${livN}.</td></tr>`}</tbody></table></div></section><div class="sec-title sec-add">Ventes de ${cN} (${rows.length}) <button type="button" class="addrow" data-addsale title="Ajouter une vente à la main" aria-label="Ajouter une vente en ${cN}" ${DB?'':'disabled'}>+</button></div>`:'';
   const body=rows.map(rowHtml).join('');
-  document.getElementById('list').innerHTML=head+`<datalist id="dl-model">${models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>`+carryHtml+`<section class="model"><div class="tbl"><table class="veh vt">${thead}<tbody>${body||`<tr><td colspan="23" class="empty-row">Aucune vente ${VMONTH?'ce mois-ci':''}. Cochez <b>Vendu</b> sur une auto dans les onglets Arrivages ou En stock : elle apparaîtra ici.</td></tr>`}</tbody></table></div></section>
+  document.getElementById('list').innerHTML=head+`<datalist id="dl-model">${models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>`+carryHtml+`<section class="model"><div class="tbl"><table class="veh vt">${thead}<tbody>${body||`<tr><td colspan="23" class="empty-row">Aucune vente ${VMONTH?'ce mois-ci':''}. Cochez <b>Vendu</b> sur une auto dans les onglets Arrivages ou En stock : elle apparaîtra ici.${VMONTH?' Pour une vente hors inventaire, cliquez <b>+</b>.':''}</td></tr>`}</tbody></table></div></section>
     ${cancelled.length?`<div class="sec-title">Ventes annulées (${cancelled.length}) · non comptées dans les totaux</div><section class="model cx"><div class="tbl"><table class="veh vt">${thead}<tbody>${cancelled.map(rowHtml).join('')}</tbody></table></div></section>`:''}
-    <p class="hint">Légende : <span class="pill p-ok">Front Marjo entré</span> <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-n">Commande</span> <span class="pill p-warn">Dealer trade</span> <span class="pill p-bad">Annulé</span>. Décocher Vendu retire l'auto du board de ventes (les infos sont gardées si on la recoche).</p>`;
+    <p class="hint">Légende : <span class="pill p-ok">Front Marjo entré</span> <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-n">Commande</span> <span class="pill p-warn">Dealer trade</span> <span class="pill p-bad">Annulé</span>. Décocher Vendu retire l'auto du board de ventes (les infos sont gardées si on la recoche). Une vente mise <b>Annulé</b> reste ici en rouge et l'auto redevient disponible en inventaire. Le ✕ efface une vente ajoutée avec +.</p>`;
   ventesSummary();
   const sel=document.getElementById('vmonth'); sel.onchange=()=>{VMONTH=sel.value;ventesView()};
 }
@@ -360,6 +380,9 @@ document.addEventListener('input',e=>{const i=e.target;
   if(!i.dataset||!i.dataset.vk) return; const k=i.dataset.vk,f=i.dataset.f;
   if(f==='soldAt'){NOTES[k]={...(NOTES[k]||{}),soldAt:i.value};clearTimeout(vTimers[k]);vTimers[k]=setTimeout(()=>saveNote(k),0);setTimeout(()=>{if(document.activeElement!==i)ventesView()},50);i.addEventListener('blur',()=>ventesView(),{once:true});return}
   if(i.type==='checkbox'){const o=NOTES[k]?.vente||{};NOTES[k]={...(NOTES[k]||{}),vente:{...o,[f]:i.checked,...(f==='rdrOk'?{rdrAt:i.checked?(o.rdrAt||new Date().toISOString().slice(0,10)):''}:{})}};ventesSummary();clearTimeout(vTimers[k]);vTimers[k]=setTimeout(()=>saveNote(k),0);return}
+  if(f==='statut'){const n0=NOTES[k];if(!n0||!n0.vendu)return; const was=n0.vente?.statut||'vendu'; // ligne périmée : ignorer
+    if(i.value==='cancel'&&was!=='cancel'&&isInvKey(k)){cancelToInventory(k);return}                    // l'auto redevient disponible en inventaire
+    const from=n0.vente?.annuleDe; if(i.value!=='cancel'&&was==='cancel'&&from&&isInvKey(from)){reactivate(k,i.value);return}} // l'auto redevient vendue
   NOTES[k]={...(NOTES[k]||{}),vente:{...(NOTES[k]?.vente||{}),[f]:i.value}};
   if(f==='stock'||f==='gamme'){document.querySelectorAll(`input[data-f="${f}"][data-vk="${k}"]`).forEach(o=>{if(o!==i)o.value=i.value})}
   if(['livraison','heure','rep','fi','client','model','stock'].includes(f)){refreshCal(k);const xx=NOTES[k].vente;if(MCP&&xx.livraison&&xx.heure&&(xx.calId||f==='livraison'||f==='heure')){clearTimeout(calTimers[k]);calTimers[k]=setTimeout(()=>syncCal(k),2500)}}
@@ -374,7 +397,75 @@ document.addEventListener('input',e=>{const i=e.target;
   ventesSummary(); clearTimeout(vTimers[k]); vTimers[k]=setTimeout(()=>saveNote(k), i.tagName==='SELECT'||i.type==='date'?0:800);
 });
 (async()=>{ try{ const db=await window.claude?.use?.('db'); if(!db) return; db.doc('config/ventes').onSnapshot(s=>{ if(s.exists){const x=s.data()||{}; if(document.activeElement?.id!=='vobj'&&document.activeElement?.id!=='vobjm'){if(!document.activeElement?.dataset?.fi) CFG={objectif:x.objectif??66,objMoy:x.objMoy??1500,fiEmails:x.fiEmails||{}}; if(tab==='ventes'){const a=document.getElementById('vobj'),b=document.getElementById('vobjm');if(a)a.value=CFG.objectif;if(b)b.value=CFG.objMoy;ventesSummary()}}} }); }catch(e){} })();
+const todayTO=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'});
+const redrawAll=k=>{if(k)paint(k);kpis();matrix();tabsUI();if(tab==='ventes')ventesView();else if(!document.activeElement?.dataset?.k)list()};
 
+// ---- Ajout manuel d'une vente (bouton + à côté de « Ventes de <mois> ») ----
+// Date de vente par défaut : aujourd'hui pour le mois en cours, sinon le dernier jour du mois affiché (le 1er pour un mois à venir).
+function newSaleDate(ym){const t=todayTO();if(ym===t.slice(0,7))return t;if(ym<t.slice(0,7)){const d=new Date(+ym.slice(0,4),+ym.slice(5),0);return ym+'-'+String(d.getDate()).padStart(2,'0')}return ym+'-01'}
+async function addSale(){
+  if(!DB||!VMONTH)return;
+  const k='MAN-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  NOTES[k]={vendu:true,comment:'',soldAt:newSaleDate(VMONTH),vente:{}};
+  ventesView();tabsUI();
+  const tr=document.querySelector(`tr[data-vrow="${k}"]`);if(tr){tr.classList.add('newrow');tr.scrollIntoView({block:'center',behavior:'smooth'})}
+  const inp=document.getElementById('v-rep-'+k);if(inp)inp.focus({preventScroll:true});
+  if(!await saveNote(k)){delete NOTES[k];ventesView();tabsUI()}
+}
+async function delSale(k){
+  const n=NOTES[k];if(!DB||!isManual(k)||!n)return;
+  const x=n.vente||{},nm=String(x.client||'').trim();
+  if(!confirm((nm?`Effacer la vente de ${nm} ?`:'Effacer cette ligne ?')+(x.calId?'\nL\'événement de livraison reste dans Google Agenda.':'')))return;
+  [vTimers,calTimers,timers].forEach(T=>clearTimeout(T[k]));delete NOTES[k];ventesView();tabsUI();
+  try{await DB.collection('suivi').doc(k).delete();setStatus('Ligne effacée');scheduleSheet()}
+  catch(e){NOTES[k]=n;ventesView();tabsUI();saveErr(e)}
+}
+document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('[data-addsale]');if(a){addSale();return}const d=e.target.closest&&e.target.closest('[data-delsale]');if(d)delSale(d.dataset.delsale)});
+
+// ---- Vente annulée → l'auto redevient disponible en inventaire ----
+// La vente passe dans une fiche « CX-… » (hors inventaire) qui reste en rouge dans Ventes annulées ;
+// la fiche de l'auto est remise à zéro (Vendu décoché, commentaire vidé) en gardant son no de stock et sa version.
+function cancelPlan(k,n){
+  const v=V.find(z=>keyOf(z)===k)||{}, x={...(n.vente||{})}, t=s=>String(s??'').trim();
+  let cx='CX-'+k+'-'+(t(n.soldAt)||todayTO()).replace(/-/g,''); if(NOTES[cx])cx+='-'+Date.now().toString(36);
+  const rec={vendu:true,comment:'',soldAt:n.soldAt||todayTO(),vente:{...x,statut:'cancel',client:t(x.client)||t(n.comment),model:t(x.model)||v.model||'',gamme:t(x.gamme)||v.ver||'',couleur:t(x.couleur)||colorName(v.ext||''),annee:t(x.annee)||v.year||'',stock:t(x.stock)||STOCK[v.vin]||'',niv:t(x.niv)||(v.vin?v.vin.slice(-8):''),annuleDe:k,annuleLe:todayTO()}};
+  const keep={}; if(t(x.stock))keep.stock=x.stock; if(t(x.gamme))keep.gamme=x.gamme;
+  return {cx,rec,back:{vendu:false,comment:'',soldAt:'',vente:keep}};
+}
+async function cancelToInventory(k){
+  const n=NOTES[k];if(!n||!DB)return;
+  const p=cancelPlan(k,n);[vTimers,calTimers,timers].forEach(T=>clearTimeout(T[k]));
+  NOTES[p.cx]=p.rec;NOTES[k]=p.back;redrawAll(k);
+  try{await writeNotes([[p.cx,p.rec],[k,p.back]]);setStatus('Vente annulée : l\'auto est de nouveau disponible en inventaire');scheduleSheet()}
+  catch(e){delete NOTES[p.cx];NOTES[k]=n;redrawAll(k);saveErr(e)}
+}
+// Vente annulée remise à Vendu / Commande… : la vente retourne sur l'auto, qui redevient vendue
+async function reactivate(cx,st){
+  const n=NOTES[cx],x={...(n.vente||{})},k=x.annuleDe,cur=NOTES[k];
+  if(cur&&cur.vendu){ventesView();alert('Cette auto a été revendue depuis l\'annulation : cette vente annulée ne peut pas être réactivée.');return}
+  const {annuleDe,annuleLe,...sale}=x, v=V.find(z=>keyOf(z)===k)||{}, keep=(cur&&cur.vente)||{};
+  const dflt={model:v.model,gamme:v.ver,couleur:colorName(v.ext||''),annee:v.year,niv:v.vin?v.vin.slice(-8):'',stock:STOCK[v.vin]||''};
+  Object.keys(dflt).forEach(f=>{if(String(sale[f]??'')===String(dflt[f]??''))delete sale[f]}); // garder seulement ce qui diffère de l'inventaire
+  const back={vendu:true,comment:sale.client||'',soldAt:n.soldAt||todayTO(),vente:{...sale,statut:st,...(keep.stock?{stock:keep.stock}:{}),...(keep.gamme?{gamme:keep.gamme}:{})}};
+  [vTimers,calTimers,timers].forEach(T=>clearTimeout(T[cx]));delete NOTES[cx];NOTES[k]=back;redrawAll(k);
+  try{await writeNotes([[k,back]],[cx]);setStatus('Vente réactivée : l\'auto est de nouveau vendue');scheduleSheet()}
+  catch(e){NOTES[cx]=n;if(cur)NOTES[k]=cur;else delete NOTES[k];redrawAll(k);saveErr(e)}
+}
+// Rattrapage (admin) : ventes déjà annulées dont l'auto est encore cochée Vendu (avant cette règle, ou rouges dans BOARD 2026)
+let RELEASING=false;
+async function releaseCancelled(){
+  if(RELEASING||!DB||!USER||!V.length)return;
+  try{if(!(await Promise.resolve(USER.canEdit())))return}catch(e){return}
+  const ae=document.activeElement?.dataset||{};
+  const todo=Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&n.vente?.statut==='cancel'&&isInvKey(k)&&ae.vk!==k&&ae.k!==k);
+  if(!todo.length)return; RELEASING=true; const bak=[], sets=[];
+  try{
+    todo.forEach(([k,n])=>{const p=cancelPlan(k,n);bak.push([k,n],[p.cx,undefined]);NOTES[p.cx]=p.rec;NOTES[k]=p.back;sets.push([p.cx,p.rec],[k,p.back])});
+    await writeNotes(sets); const s=todo.length>1?'s':'';
+    setStatus(`${todo.length} vente${s} annulée${s} : auto${s} remise${s} en inventaire`); scheduleSheet();
+  }catch(e){bak.forEach(([k,n])=>{if(n===undefined)delete NOTES[k];else NOTES[k]=n})}
+  finally{RELEASING=false;Object.keys(NOTES).forEach(paint);kpis();matrix();tabsUI();if(tab==='ventes'){if(!document.activeElement?.dataset?.vk)ventesView();else ventesSummary()}else if(!document.activeElement?.dataset?.k)list()}
+}
 
 // ---- Copie en direct vers le Google Sheet du mois ----
 let EXPORTS={}, SHEET_T=null, SHEET_BUSY=false, SHEET_AGAIN=false;
@@ -385,7 +476,7 @@ function sheetRows(month){
   const nn=v=>{const s=String(v??'').trim().replace(/\s/g,'').replace(',','.');if(!s)return '';const f=Number(s);return isNaN(f)?String(v):f};
   const out=[];
   for(const r of allSales()){const n=r.n,x=n.vente||{},v=r.v,sold=(n.soldAt||'').slice(0,10),liv=x.livraison||'';
-    let sec=sold.slice(0,7)===month?'Ventes du mois':(sold.slice(0,7)===p&&liv.slice(0,7)===month?'Carry over':null); if(!sec)continue;
+    let sec=sold.slice(0,7)===month?'Ventes du mois':(sold.slice(0,7)===p&&isCarryLiv(liv,month)?'Carry over':null); if(!sec)continue;
     const st=ST[x.statut||'vendu']||'Vendu'; if(st==='Annulé')sec='Annulée';
     const g=(f,d)=>String((x[f]!=null&&String(x[f]).trim()!=='')?x[f]:(d??'')).trim();
     out.push([sec,g('rep'),g('fi'),g('dir'),g('source'),g('client',n.comment),g('model',v.model),g('gamme',v.ver),g('couleur',colorName(v.ext||'')),nn(g('annee',v.year)),g('stock',STOCK[v.vin]||''),g('niv',v.vin?v.vin.slice(-8):''),g('dateFi'),liv,x.rdrOk?'Oui':'',nn(x.front),nn(x.frontM),nn(x.back),st,sold]);}
@@ -416,7 +507,7 @@ function setSnapAt(at){const el=document.getElementById('snap');if(!el||!at)retu
 (async()=>{try{const db=await window.claude?.use?.('db');if(!db)return;db.doc('inventaire/actuel').onSnapshot(sn=>{if(!sn.exists)return;const x=sn.data()||{};if(!x.json||!x.date||x.date<SNAP||x.at===INV_STAMP)return;
   let rows;try{rows=JSON.parse(x.json)}catch(e){return}if(!Array.isArray(rows)||rows.length<20)return;
   INV_STAMP=x.at;applyInventory(rows,x.date);setSnapAt(x.at);
-  render();incoming();loadStock();})}catch(e){}})();
+  render();incoming();loadStock();releaseCancelled();})}catch(e){}})();
 const HACC='https://salesportal-hacc.am.hyundai-corp.io', HACC_PAGE=HACC+'/salesportal/index.html#/dealerstocklist';
 const SEL_L=['ZZLCAR_TXT','ZZMDYEAR','LSCCD_TXT','ZZEXTCL_TXT','ZZINTCL_TXT','VHVIN','ZODRNO','VBELN','LOCTNT','LGORTX','ZZETADT','AGING_DAYS','SOLD_STATUS','ZDEMO','ZPMON','RECALL_CNT','ZHOLDBAK'], SEL_O=['ZZLCAR_TXT','ZZMDYEAR','LSCCD_TXT','ZZEXTCL_TXT','ZZINTCL_TXT','ZODRNO','ZODRTYP_DESC','ZPMON'];
 const haccUrl=(dt,loc,extra)=>`${HACC}/sap/opu/odata/sap/ZGWSDD77120_SRV/ZGWSDD77120_I_DATASet?sap-language=en&menu=dealerstocklist&rfc=ZFSDD_DP_LIST_DEALER_STK_DT&${dt==='S'?'$expand=T_ORDERS&$select='+SEL_O.map(f=>'T_ORDERS/'+f).join(','):'$expand=T_LIST&$select='+SEL_L.map(f=>'T_LIST/'+f).join(',')}&$format=json&$filter=I_BUKRS%20eq%20%271300%27%20and%20I_LANGU%20eq%20%27FR%27%20and%20I_DEALER%20eq%20%27B06AA31052%27%20and%20I_MDYEAR%20eq%20%27%27%20and%20I_VHVIN%20eq%20%27%27%20and%20I_MODEL%20eq%20%27%27%20and%20I_USAGE%20eq%20%27%27%20and%20I_LOCATION%20eq%20%27${loc}%27%20and%20I_HOLDBACK_FLG%20eq%20%27%27%20and%20I_UNSOLD%20eq%20%27%27%20and%20I_DTYPE%20eq%20%27${dt}%27`+(extra?`%20and%20I_AGING_RNG%20eq%20%27%27%20and%20I_LSCCD%20eq%20%27%27%20and%20I_TRIM%20eq%20%27%27%20and%20I_EXCOL%20eq%20%27%27%20and%20I_INCOL%20eq%20%27%27`:'');
@@ -454,8 +545,11 @@ function parseFrDate(s,refYM){const m=String(s||'').toLowerCase().trim().match(/
 function cellColor(c){const b=c&&c.effectiveFormat&&c.effectiveFormat.backgroundColor;if(!b)return '';const r=b.red||0,g=b.green||0,bl=b.blue||0;
   if(g>0.85&&r<0.3&&bl<0.3)return 'comptabilise';if(r>0.85&&g>0.85&&bl<0.3)return 'commande';if(r>0.85&&g>0.45&&g<0.75&&bl<0.3)return 'dealer';if(r>0.85&&g<0.3&&bl<0.3)return 'cancel';return ''}
 let B26_BUSY=false;
+const IMPORT_FIN='2026-11-01'; // dès le 1er novembre 2026, les ventes s'entrent directement dans le board : plus d'import de BOARD 2026
 async function syncBoard26(){
-  if(B26_BUSY||!DB||!MCP)return; B26_BUSY=true; const el=document.getElementById('boardsrc');
+  if(B26_BUSY||!DB||!MCP)return;
+  if(todayTO()>=IMPORT_FIN){const b=document.getElementById('boardsrc');if(b)b.textContent='';return}
+  B26_BUSY=true; const el=document.getElementById('boardsrc');
   try{
     const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'}), ym=today.slice(0,7), mi=+ym.slice(5)-1;
     const up=MOIS_L[mi].toUpperCase(), names=[up+' NEUF', up.normalize('NFD').replace(/[̀-ͯ]/g,'')+' NEUF'];
@@ -508,6 +602,7 @@ async function syncBoard26(){
     }
     if(el)el.textContent=`BOARD 2026 (${used}) vérifié à ${new Date().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}`+(added?` · ${added} nouvelle${added>1?'s':''} vente${added>1?'s':''} ajoutée${added>1?'s':''}`:'')+(compta?` · ${compta} vente${compta>1?'s':''} mise${compta>1?'s':''} à jour`:'');
     if(added||compta){kpis();matrix();tabsUI();if(tab==='ventes'&&!document.activeElement?.dataset?.vk)list()}
+    if((added||compta)&&!document.activeElement?.dataset?.vk)releaseCancelled(); // vente annulée (rouge) dans BOARD 2026 : l'auto retourne en inventaire
   }catch(e){if(el)el.textContent='BOARD 2026 non vérifié'+(e&&e.code==='not_granted'?' (accès Google Sheets refusé)':'')}
   finally{B26_BUSY=false}
 }

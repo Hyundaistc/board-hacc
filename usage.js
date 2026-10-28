@@ -8,6 +8,9 @@ const num=x=>{const n=parseFloat(String(x??'').replace(/[\s$]/g,'').replace(/,(?
 const money=n=>Math.round(n).toLocaleString('fr-CA')+' $';
 const normName=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const keyOf=r=>'S-'+normName(r.stock);
+// Ventes hors inventaire : MAN-… = ajoutée à la main (bouton +), CX-… = vente annulée d'une auto remise en inventaire, U-… = importée de BOARD 2026
+const isManual=k=>String(k||'').startsWith('MAN-');
+const invOf=k=>INV.find(x=>keyOf(x)===k);
 const todayTO=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'});
 const fmtAt=at=>{const d=new Date(at);return d.toLocaleDateString('fr-CA',{timeZone:'America/Toronto',day:'numeric',month:'long',year:'numeric'})+' à '+d.toLocaleTimeString('fr-CA',{timeZone:'America/Toronto',hour:'2-digit',minute:'2-digit'})};
 let COUTS=null, COUT_SRC='', PRETS={rows:[]}, NOTES={}, CFG={objectif:50,objMoy:1800}, DB=null, USER=null, MCP=null, CAN_EDIT=false;
@@ -79,12 +82,18 @@ const prevYM=ym=>{const d=new Date(+ym.slice(0,4),+ym.slice(5)-2,15);return d.ge
 const effF=x=>String(x.frontM??'').trim()!==''?num(x.frontM):num(x.front);
 function allSales(){return Object.entries(NOTES).filter(([k,n])=>n&&n.vendu).map(([k,n])=>({k,n,r:INV.find(x=>keyOf(x)===k)}))}
 function salesRows(){return allSales().filter(x=>(x.n.soldAt||'').slice(0,7)===VMONTH)}
-function carryRows(){const p=prevYM(VMONTH);return allSales().filter(x=>(x.n.soldAt||'').slice(0,7)===p&&(x.n.vente?.statut||'vendu')!=='cancel'&&(!x.n.vente?.livraison||x.n.vente.livraison.slice(0,7)>=VMONTH))}
+const nextYM=ym=>{const d=new Date(+ym.slice(0,4),+ym.slice(5),15);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
+// Carry over — règle dès novembre 2026 : vente du mois précédent pas encore livrée ou livrée APRÈS le 2 du mois ;
+// livrée le 1er ou le 2, elle reste dans son mois de vente et compte dans ses livraisons. Avant novembre : livrée dans le mois ou plus tard.
+const CARRY_DES='2026-11';
+const isCarryLiv=(l,m)=>{l=String(l||'').slice(0,10);return m>=CARRY_DES?l>m+'-02':l.slice(0,7)>=m};
+const inMonthLiv=(d,m)=>{d=String(d||'').slice(0,10);if(d.slice(0,7)===m)return true;const nx=nextYM(m);return nx>=CARRY_DES&&(d===nx+'-01'||d===nx+'-02')};
+function carryRows(){const p=prevYM(VMONTH);return allSales().filter(x=>(x.n.soldAt||'').slice(0,7)===p&&(x.n.vente?.statut||'vendu')!=='cancel'&&(!x.n.vente?.livraison||isCarryLiv(x.n.vente.livraison,VMONTH)))}
 function ventesSummary(){
   const el=document.getElementById('vsum');if(!el)return;
   const month=salesRows().filter(x=>(x.n.vente?.statut||'vendu')!=='cancel'), carry=carryRows(), scope=[...month,...carry];
   const obj=num(CFG.objectif)||0,pct=obj?Math.round(month.length/obj*100):0;
-  const livre=scope.filter(x=>{const l=x.n.vente?.livraison;return l&&l.slice(0,7)===VMONTH&&l<=todayTO()}).length;
+  const livre=scope.filter(x=>{const l=x.n.vente?.livraison;return l&&inMonthLiv(l,VMONTH)&&l<=todayTO()}).length;
   const fr=scope.map(x=>effF(x.n.vente||{})).filter(v=>v), bk=scope.map(x=>num(x.n.vente?.back)).filter(v=>v);
   const tf=fr.reduce((a,b)=>a+b,0),tb=bk.reduce((a,b)=>a+b,0);
   const group=f=>{const m={};scope.forEach(x=>{const ns=String(x.n.vente?.[f]||'').toUpperCase().split(/[-\/]/).map(s=>s.trim()).filter(Boolean);const w=ns.length?1/ns.length:0;ns.forEach(nm=>{m[nm]=m[nm]||{d:0,f:0,b:0};m[nm].d+=w;m[nm].f+=effF(x.n.vente||{})*w;m[nm].b+=num(x.n.vente?.back)*w})});return Object.entries(m).sort((a,b)=>b[1].d-a[1].d)};
@@ -103,7 +112,7 @@ function vSel(k,f,v,opts){return `<select class="vi" data-vk="${k}" data-f="${f}
 function rowHtml(x,i){const k=x.k,n=x.n,v=n.vente||{},r=x.r||{},st=v.statut||'vendu';const liv=v.livraison&&v.livraison<=todayTO();
   const g=(f,d)=>v[f]!=null&&String(v[f]).trim()!==''?v[f]:(d||'');
   const tot=effF(v)+num(v.back);
-  return `<tr data-vrow="${k}" class="st-${st} ${liv&&st!=='cancel'?'livre':''}"><td class="idx">${i+1}</td>
+  return `<tr data-vrow="${k}" class="st-${st} ${liv&&st!=='cancel'?'livre':''}"><td class="idx">${i+1}${isManual(k)&&DB?`<button type="button" class="delrow" data-delsale="${k}" title="Effacer cette vente ajoutée à la main" aria-label="Effacer la vente ${i+1}">✕</button>`:''}</td>
   <td>${vIn(k,'rep',v.rep,'list="dl-rep"')}</td><td>${vIn(k,'fi',v.fi,'list="dl-fi" style="width:62px"')}</td><td>${vIn(k,'dir',v.dir,'list="dl-dir" style="width:72px"')}</td><td>${vIn(k,'source',v.source,'style="width:84px"')}</td>
   <td>${vIn(k,'client',g('client',n.comment),'style="width:170px"')}</td>
   <td>${vIn(k,'marque',g('marque',r.make),'style="width:84px"')}</td><td>${vIn(k,'modele',g('modele',r.model),'style="width:96px"')}</td><td>${vIn(k,'annee',g('annee',r.year),'style="width:58px"')}</td>
@@ -133,11 +142,11 @@ function ventesView(){
    <label>Obj. front <input id="vobjm" class="vi s" value="${esc(CFG.objMoy)}" inputmode="numeric" ${DB?'':'disabled'}></label></div>
    <div id="vsum" style="margin-top:10px"></div>
    <datalist id="dl-rep">${['MICK','ALEX M','ALEX D','NINA','SEB','PAT','SAM','WILL','CHARBEL','HOUSE'].map(x=>`<option value="${x}">`).join('')}</datalist><datalist id="dl-fi">${['MEL','KEV','ISA'].map(x=>`<option value="${x}">`).join('')}</datalist><datalist id="dl-dir">${['OMAR','BLACK','MICK'].map(x=>`<option value="${x}">`).join('')}</datalist>
-   ${carry.length?`<p class="sec-title">Carry over de ${pm}</p>${tbl(carry,'')}`:''}
-   <p class="sec-title">Ventes du mois</p>${tbl(live,'Aucune vente. Cochez Vendu dans l\'inventaire ou ajoutez-la dans BOARD 2026 (onglet USED).')}
+   ${carry.length?`<p class="sec-title">Carry over de ${pm}${VMONTH>=CARRY_DES?` · vendus en ${pm}, pas encore livrés ou livrés après le 2 ${MOIS[+VMONTH.slice(5)-1]}`:''}</p>${tbl(carry,'')}`:''}
+   <p class="sec-title sec-add">Ventes du mois <button type="button" class="addrow" data-addsale title="Ajouter une vente à la main" aria-label="Ajouter une vente en ${MOIS[+VMONTH.slice(5)-1]}" ${DB?'':'disabled'}>+</button></p>${tbl(live,'Aucune vente. Cochez Vendu dans l\'inventaire ou cliquez + pour en ajouter une à la main.')}
    ${canc.length?`<p class="sec-title">Ventes annulées / refus (exclues des totaux)</p>${tbl(canc,'')}`:''}
    <p class="sec-title">Véhicules prêtés · ${(PRETS.rows||[]).length}</p>${pretsTbl()}
-   <p class="hint">Couleurs : <span class="pill p-ok">Comptabilisé</span> <span class="pill p-n">Livré</span> <span class="pill p-bad">Annulé / refus</span>. Décocher Vendu dans l'inventaire retire l'auto des ventes.</p>`;
+   <p class="hint">Couleurs : <span class="pill p-ok">Comptabilisé</span> <span class="pill p-n">Livré</span> <span class="pill p-bad">Annulé / refus</span>. Décocher Vendu dans l'inventaire retire l'auto des ventes. Une vente mise <b>Annulé / refus</b> reste ici en rouge et l'auto redevient disponible en inventaire. Le ✕ efface une vente ajoutée avec +.</p>`;
   ventesSummary();
   document.getElementById('vmonth').onchange=e=>{VMONTH=e.target.value;ventesView()};
 }
@@ -145,15 +154,83 @@ const vt={};
 document.addEventListener('input',e=>{const i=e.target;
   if(i.id==='vobj'||i.id==='vobjm'){CFG[i.id==='vobj'?'objectif':'objMoy']=i.value;ventesSummary();clearTimeout(vt.cfg);vt.cfg=setTimeout(saveCfg,800);return}
   if(!i.dataset||!i.dataset.vk)return;const k=i.dataset.vk,f=i.dataset.f;
+  if(!NOTES[k]||!NOTES[k].vendu)return; // ligne périmée (vente retirée, annulée ou effacée entre-temps)
+  if(f==='statut'){const was=NOTES[k].vente?.statut||'vendu',from=NOTES[k].vente?.annuleDe;
+    if(i.value==='cancel'&&was!=='cancel'&&invOf(k)){cancelToInventory(k);return}             // l'auto redevient disponible en inventaire
+    if(i.value!=='cancel'&&was==='cancel'&&from&&invOf(from)){reactivate(k,i.value);return}} // l'auto redevient vendue
   if(f==='soldAt'){NOTES[k]={...(NOTES[k]||{}),soldAt:i.value}}else{NOTES[k]={...(NOTES[k]||{}),vente:{...(NOTES[k]?.vente||{}),[f]:i.value}}}
   if(f==='statut'){const tr=i.closest('tr');if(tr){tr.classList.remove('st-vendu','st-comptabilise','st-cancel');tr.classList.add('st-'+i.value)}}
   if(['front','frontM','back'].includes(f)){const v=NOTES[k].vente,t=effF(v)+num(v.back);const c=document.getElementById('tot-'+k);if(c)c.textContent=t?money(t):'—'}
   ventesSummary();clearTimeout(vt[k]);vt[k]=setTimeout(()=>{saveNote(k);if(f==='statut'||f==='soldAt'||f==='livraison')setTimeout(()=>{if(!document.activeElement?.dataset?.vk)ventesView()},50)},i.tagName==='SELECT'||i.type==='date'?0:800)});
 document.addEventListener('change',e=>{const i=e.target;if(i.tagName==='SELECT'&&i.dataset.vk)i.dispatchEvent(new Event('input',{bubbles:true}))});
 
+// Ajout manuel d'une vente (bouton + à côté de « Ventes du mois ») : date par défaut = aujourd'hui pour le mois en cours,
+// sinon le dernier jour du mois affiché (le 1er pour un mois à venir).
+function newSaleDate(ym){const t=todayTO();if(ym===t.slice(0,7))return t;if(ym<t.slice(0,7)){const d=new Date(+ym.slice(0,4),+ym.slice(5),0);return ym+'-'+String(d.getDate()).padStart(2,'0')}return ym+'-01'}
+async function addSale(){
+  if(!DB||!VMONTH)return;
+  const k='MAN-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  NOTES[k]={vendu:true,comment:'',soldAt:newSaleDate(VMONTH),vente:{}};
+  if(q){q='';const s=document.getElementById('q');if(s)s.value=''} // la recherche cacherait la ligne vide
+  render();
+  const tr=document.querySelector(`tr[data-vrow="${k}"]`);if(tr){tr.classList.add('newrow');tr.scrollIntoView({block:'center',behavior:'smooth'})}
+  const inp=document.querySelector(`input[data-vk="${k}"][data-f="rep"]`);if(inp)inp.focus({preventScroll:true});
+  if(!await saveNote(k)){delete NOTES[k];render()}
+}
+async function delSale(k){
+  const n=NOTES[k];if(!DB||!isManual(k)||!n)return;
+  const nm=String(n.vente?.client||'').trim();
+  if(!confirm(nm?`Effacer la vente de ${nm} ?`:'Effacer cette ligne ?'))return;
+  clearTimeout(vt[k]);delete NOTES[k];render();
+  try{await DB.collection('suivi').doc(k).delete();setStatus('Ligne effacée')}catch(e){NOTES[k]=n;render();setStatus('Non effacée : accès en lecture seule ?')}
+}
+document.addEventListener('click',e=>{const a=e.target.closest('[data-addsale]');if(a){addSale();return}const d=e.target.closest('[data-delsale]');if(d)delSale(d.dataset.delsale)});
+
+// Vente annulée → l'auto redevient disponible en inventaire : la vente passe dans une fiche « CX-… » (hors inventaire)
+// qui reste en rouge dans les ventes annulées ; la fiche de l'auto est remise à zéro (Vendu décoché, commentaire vidé).
+function cancelPlan(k,n){
+  const r=invOf(k)||{},x={...(n.vente||{})},t=s=>String(s??'').trim();
+  let cx='CX-'+k+'-'+(t(n.soldAt)||todayTO()).replace(/-/g,'');if(NOTES[cx])cx+='-'+Date.now().toString(36);
+  const rec={vendu:true,comment:'',soldAt:n.soldAt||todayTO(),vente:{...x,statut:'cancel',client:t(x.client)||t(n.comment),marque:t(x.marque)||r.make||'',modele:t(x.modele)||r.model||'',annee:t(x.annee)||r.year||'',stock:t(x.stock)||r.stock||'',annuleDe:k,annuleLe:todayTO()}};
+  return {cx,rec,back:{vendu:false,comment:'',soldAt:'',vente:{}}};
+}
+async function cancelToInventory(k){
+  const n=NOTES[k];if(!n||!DB)return;const p=cancelPlan(k,n);
+  clearTimeout(vt[k]);clearTimeout(tmr[k]);NOTES[p.cx]=p.rec;NOTES[k]=p.back;render();
+  try{await writeNotes([[p.cx,p.rec],[k,p.back]]);setStatus('Vente annulée : l\'auto est de nouveau disponible en inventaire')}
+  catch(e){delete NOTES[p.cx];NOTES[k]=n;render();setStatus('Non enregistré : accès en lecture seule ?')}
+}
+// Vente annulée remise à Vendu / Comptabilisé : la vente retourne sur l'auto, qui redevient vendue
+async function reactivate(cx,st){
+  const n=NOTES[cx],x={...(n.vente||{})},k=x.annuleDe,cur=NOTES[k];
+  if(cur&&cur.vendu){render();alert('Cette auto a été revendue depuis l\'annulation : cette vente annulée ne peut pas être réactivée.');return}
+  const {annuleDe,annuleLe,...sale}=x;
+  const back={vendu:true,comment:sale.client||'',soldAt:n.soldAt||todayTO(),vente:{...sale,statut:st}};
+  clearTimeout(vt[cx]);delete NOTES[cx];NOTES[k]=back;render();
+  try{await writeNotes([[k,back]],[cx]);setStatus('Vente réactivée : l\'auto est de nouveau vendue')}
+  catch(e){NOTES[cx]=n;if(cur)NOTES[k]=cur;else delete NOTES[k];render();setStatus('Non enregistré : accès en lecture seule ?')}
+}
+// Rattrapage (admin) : ventes déjà annulées dont l'auto est encore cochée Vendu (avant cette règle, ou rouges dans BOARD 2026)
+let RELEASING=false;
+async function releaseCancelled(){
+  if(RELEASING||!DB||!CAN_EDIT||!INV.length)return;
+  const ae=document.activeElement?.dataset||{};
+  const todo=Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&n.vente?.statut==='cancel'&&invOf(k)&&ae.vk!==k&&ae.k!==k);
+  if(!todo.length)return;RELEASING=true;const bak=[],sets=[];
+  try{todo.forEach(([k,n])=>{const p=cancelPlan(k,n);bak.push([k,n],[p.cx,undefined]);NOTES[p.cx]=p.rec;NOTES[k]=p.back;sets.push([p.cx,p.rec],[k,p.back])});
+    await writeNotes(sets);const s=todo.length>1?'s':'';setStatus(`${todo.length} vente${s} annulée${s} : auto${s} remise${s} en inventaire`)}
+  catch(e){bak.forEach(([k,n])=>{if(n===undefined)delete NOTES[k];else NOTES[k]=n})}
+  finally{RELEASING=false;const a=document.activeElement?.dataset||{};if(!a.vk&&!a.k&&!a.dk)render();else{kpis();tabsUI();ventesSummary()}}
+}
+
 // ---------- Base partagée ----------
 function setStatus(t){const el=document.getElementById('savestate');el.textContent=t;el.className='status ok';clearTimeout(el._t);el._t=setTimeout(()=>{el.textContent=DB?'Vendu, commentaires et ventes partagés avec l\'équipe':'';el.className='status'},3000)}
-async function saveNote(k){if(!DB)return;const n=NOTES[k]||{};try{await DB.collection('suivi').doc(k).set({vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()});setStatus('Enregistré')}catch(e){setStatus('Non enregistré : accès en lecture seule ?')}}
+const noteDoc=async n=>({vendu:!!n.vendu,comment:n.comment||'',soldAt:n.soldAt||'',vente:n.vente||{},by:USER?await USER.id().catch(()=>''):'',at:new Date().toISOString()});
+async function saveNote(k){if(!DB)return false;const n=NOTES[k]||{};try{await DB.collection('suivi').doc(k).set(await noteDoc(n));setStatus('Enregistré');return true}catch(e){setStatus('Non enregistré : accès en lecture seule ?');return false}}
+// Écrit plusieurs fiches d'un seul coup (tout ou rien) : sets = [[clé, fiche]…], dels = [clé…]
+async function writeNotes(sets,dels=[]){const col=DB.collection('suivi'),b=DB.batch?DB.batch():null;
+  if(!b){for(const [k,n] of sets)await col.doc(k).set(await noteDoc(n));for(const k of dels)await col.doc(k).delete();return}
+  for(const [k,n] of sets)b.set(col.doc(k),await noteDoc(n));for(const k of dels)b.delete(col.doc(k));await b.commit()}
 async function saveCfg(){if(!DB)return;try{await DB.doc('config/ventes').set({objectif:num(CFG.objectif),objMoy:num(CFG.objMoy)});setStatus('Enregistré')}catch(e){}}
 function render(){setSnap();kpis();tabsUI();if(tab==='inv')invView();else ventesView()}
 (async()=>{
@@ -162,12 +239,14 @@ function render(){setSnap();kpis();tabsUI();if(tab==='inv')invView();else ventes
   try{CAN_EDIT=USER?!!(await Promise.resolve(USER.canEdit())):false}catch(e){}
   try{MCP=await window.claude?.use?.('mcp')}catch(e){MCP=null}
   let first=true;
-  DB.collection('suivi').onSnapshot(s=>{const ae=document.activeElement?.dataset||{};s.docs.forEach(d=>{if(!d.exists)return;const x=d.data()||{};const ed=ae.vk===d.id||ae.k===d.id||ae.dk===d.id;if(ed&&!first)return;NOTES[d.id]={vendu:!!x.vendu,comment:x.comment||'',soldAt:x.soldAt||'',vente:x.vente||{}}});
-    if(first){first=false;render();if(CAN_EDIT&&MCP){syncBoard();setInterval(syncBoard,5*60*1000)}}else if(!ae.vk&&!ae.k&&!ae.dk)render();else{kpis();tabsUI();ventesSummary()}});
+  DB.collection('suivi').onSnapshot(s=>{const ae=document.activeElement?.dataset||{};
+    if(typeof s.docChanges==='function')s.docChanges().forEach(ch=>{if(ch.type==='removed')delete NOTES[ch.doc.id]}); // fiche effacée ailleurs (✕, vente réactivée)
+    s.docs.forEach(d=>{if(!d.exists)return;const x=d.data()||{};const ed=ae.vk===d.id||ae.k===d.id||ae.dk===d.id;if(ed&&!first)return;NOTES[d.id]={vendu:!!x.vendu,comment:x.comment||'',soldAt:x.soldAt||'',vente:x.vente||{}}});
+    if(first){first=false;render();releaseCancelled();if(CAN_EDIT&&MCP){syncBoard();setInterval(syncBoard,5*60*1000)}}else if(!ae.vk&&!ae.k&&!ae.dk)render();else{kpis();tabsUI();ventesSummary()}});
   DB.doc('config/ventes').onSnapshot(s=>{if(s.exists){const x=s.data()||{};CFG={objectif:x.objectif??50,objMoy:x.objMoy??1800};if(tab==='ventes'&&!['vobj','vobjm'].includes(document.activeElement?.id))ventesSummary()}});
   try{DB.doc('couts/actuel').onSnapshot(s=>{if(s.exists){const x=s.data()||{};COUTS=x.map||null;COUT_SRC=x.source||'';if(tab==='inv'&&!document.activeElement?.dataset?.k)invView()}},()=>{COUTS=null})}catch(e){}
   DB.doc('config/prets').onSnapshot(s=>{if(s.exists){PRETS=s.data()||{rows:[]};if(!document.activeElement?.dataset?.vk)render()}});
-  DB.doc('inventaire/actuel').onSnapshot(s=>{if(!s.exists)return;const x=s.data()||{};if(!x.json||!x.at||x.at<=INV_AT)return;try{const r=JSON.parse(x.json);if(Array.isArray(r)&&r.length>5){INV=r;INV_AT=x.at;render()}}catch(e){}});
+  DB.doc('inventaire/actuel').onSnapshot(s=>{if(!s.exists)return;const x=s.data()||{};if(!x.json||!x.at||x.at<=INV_AT)return;try{const r=JSON.parse(x.json);if(Array.isArray(r)&&r.length>5){INV=r;INV_AT=x.at;render();releaseCancelled()}}catch(e){}});
   setStatus('Vendu, commentaires et ventes partagés avec l\'équipe');
 })();
 render();
@@ -178,6 +257,7 @@ function parseD(s,ym){s=String(s||'').trim();let m=s.match(/^(\d{4})-(\d{2})-(\d
 function colorOf(c){const b=c&&c.effectiveFormat&&c.effectiveFormat.backgroundColor;if(!b)return '';const r=b.red||0,g=b.green||0,bl=b.blue||0;if(g>0.85&&r<0.3&&bl<0.3)return 'comptabilise';if(r>0.85&&g<0.3&&bl<0.3)return 'cancel';return ''}
 const lev=(a,b)=>{if(Math.abs(a.length-b.length)>2)return 9;const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length]};
 let SYNC_BUSY=false;
+const IMPORT_FIN='2026-11-01'; // dès le 1er novembre 2026, les ventes s'entrent directement dans le board : plus d'import de ventes de BOARD 2026 (les prêts restent lus)
 function pretOf(val){const cells=[0,1,2,3,4,5,6,7,8,9,10].map(j=>val(j));const used=new Set();
   const stkI=[0,1].find(j=>/^[A-Z]?\d{4,6}[A-Z]{0,2}$/i.test(cells[j])&&!/^\d{1,3}$/.test(cells[j]));if(stkI!=null)used.add(stkI);
   const vinI=cells.findIndex((c,j)=>!used.has(j)&&/^[A-HJ-NPR-Z0-9]{17}$/i.test(c));if(vinI>=0)used.add(vinI);
@@ -186,7 +266,7 @@ function pretOf(val){const cells=[0,1,2,3,4,5,6,7,8,9,10].map(j=>val(j));const u
   [0,3,4].forEach(j=>used.add(j));
   return {stock:stkI!=null?cells[stkI]:'',modele:cells[3],annee:/^\d{4}$/.test(cells[4])?cells[4]:'',vin:vinI>=0?cells[vinI]:'',plaque:plI>=0?cells[plI]:'',date:dtI>=0?cells[dtI]:'',details:cells.filter((c,j)=>c&&!used.has(j)).join(' · ')}}
 async function syncBoard(){
-  if(SYNC_BUSY||!DB||!MCP)return;SYNC_BUSY=true;const el=document.getElementById('boardsrc');
+  if(SYNC_BUSY||!DB||!MCP)return;SYNC_BUSY=true;const el=document.getElementById('boardsrc'),ventesOn=todayTO()<IMPORT_FIN;
   try{
     const ym=todayTO().slice(0,7),up=MOIS[+ym.slice(5)-1].toUpperCase();let grid=null,used='';
     for(const nm of [...new Set([up+' USED',up.normalize('NFD').replace(/[̀-ͯ]/g,'')+' USED'])]){try{const res=await MCP.callTool('Google Sheets','get_spreadsheet',{spreadsheetId:BOARD26,ranges:[`'${nm}'!A1:T300`],includeGridData:true,fields:['sheets.data.rowData.values.effectiveFormat.backgroundColor','sheets.data.rowData.values.formattedValue']},{cache:false});
@@ -206,6 +286,7 @@ async function syncBoard(){
       if(normName(client)==='NOMDUCLIENT')continue;
       const color=colorOf(cells[6])||colorOf(cells[1]),nm=normName(client),stk=normName(val(10));
       if(sec==='after'&&color!=='cancel')continue; // sous les ventes du mois : seulement le bloc des annulations (rouge), pas les prêts / courtoisie
+      if(!ventesOn)continue; // dès le 1er novembre : plus d'import de ventes (seulement les prêts)
       let ex=byName[nm]||(stk.length>=4?byStock[stk]:'');
       if(!ex&&nm.length>=6)ex=(Object.entries(NOTES).find(([k2,n2])=>{const c2=normName(n2.vente?.client||n2.comment);return c2&&c2.length>=6&&lev(c2,nm)<=2})||[])[0];
       if(ex){const n=NOTES[ex];if(!n.vendu)continue;const st=n.vente?.statut||'vendu';let ch=false;const v={...(n.vente||{})};
@@ -219,9 +300,10 @@ async function syncBoard(){
       NOTES[k]={vendu:true,comment:client,soldAt:dateFi||(sec==='carry'?pYM+'-28':todayTO()),vente};byName[nm]=k;if(stk.length>=4)byStock[stk]=k;await saveNote(k);added++;
     }
     const pj=JSON.stringify(prets);if(pj!==JSON.stringify(PRETS.rows||[])){PRETS={rows:prets,at:new Date().toISOString(),tab:used};try{await DB.doc('config/prets').set(PRETS)}catch(e){}render()}
-    if(el)el.textContent=`BOARD 2026 (${used}) vérifié à ${new Date().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}`+(added?` · ${added} vente${added>1?'s':''} ajoutée${added>1?'s':''}`:'')+(upd?` · ${upd} mise${upd>1?'s':''} à jour`:'');
-    if(added||upd)render();
-  }catch(e){if(el)el.textContent='BOARD 2026 (USED) non vérifié'+(e&&e.code==='not_granted'?' — accès Google Sheets refusé':'')}
+    const hm=new Date().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
+    if(el)el.textContent=!ventesOn?`Véhicules prêtés lus dans BOARD 2026 (${used}) à ${hm}`:`BOARD 2026 (${used}) vérifié à ${hm}`+(added?` · ${added} vente${added>1?'s':''} ajoutée${added>1?'s':''}`:'')+(upd?` · ${upd} mise${upd>1?'s':''} à jour`:'');
+    if(added||upd){render();releaseCancelled()} // vente annulée (rouge) dans BOARD 2026 : l'auto retourne en inventaire
+  }catch(e){if(el)el.textContent=(ventesOn?'BOARD 2026 (USED) non vérifié':'Véhicules prêtés : BOARD 2026 non lu'+(e&&e.message==='onglet introuvable'?' (pas d\'onglet USED pour ce mois)':''))+(e&&e.code==='not_granted'?' — accès Google Sheets refusé':'')}
   finally{SYNC_BUSY=false}
 }
 window.D2C_BOARD={render,setInv:(rows,at)=>{INV=rows;INV_AT=at;render()}};
