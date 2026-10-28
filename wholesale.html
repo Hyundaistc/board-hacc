@@ -175,7 +175,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='4';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
+<script>window.HACC_VERSION='6';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
 <script src="shim.js?v=4"></script>
 </head>
 <body>
@@ -220,7 +220,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
   <ol>
     <li>Ouvrez One-Eighty et connectez-vous (<a href="https://isw.dlsaccelerator.com/webasp/Sales/wholesale/quote_load.asp?mode=wholesale" target="_blank" rel="noopener">Ventes → Trouver Cot / Facture en gros</a>).</li>
     <li>Cliquez le favori <b>⟳ Wholesale One-Eighty</b> pendant que vous êtes sur One-Eighty.</li>
-    <li>Le board s'ouvre : les factures en gros depuis le 1er du mois précédent sont ajoutées ou complétées (date, stock, auto, NIV, acheteur, vendant, no de facture). Les propositions pas encore facturées sont ignorées ; le coûtant reste à entrer ici.</li>
+    <li>Le board s'ouvre : les factures en gros dont la <b>date de transaction</b> est depuis le 1er du mois précédent sont ajoutées ou complétées (date, stock, auto, NIV, acheteur, vendant, no de facture). Les propositions pas encore facturées sont ignorées ; le coûtant reste à entrer ici.</li>
   </ol>
   <div class="adminbox admin-only" hidden><input type="file" id="importfile" accept=".json,application/json" hidden><span class="hint" id="importmsg" role="status"></span></div>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="dlg-close" type="button">Fermer</button></p>
@@ -243,10 +243,14 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 var HO='https://isw.dlsaccelerator.com';
 if(location.origin!==HO){alert('Ouvrez d\'abord One-Eighty (Ventes → Trouver Cot / Facture en gros), puis cliquez ce favori.');return;}
 var w=window.open(APP+'#import','hacc_board');
+if(!w||w===window){alert('Le board n\'a pas pu s\'ouvrir : autorisez les fenêtres surgissantes pour One-Eighty, puis recliquez le favori.');return;}
 var AO=new URL(APP).origin;
 var BASE=HO+'/webasp/Sales/wholesale/quote_load.asp?mode=wholesale&add=';
 function pad(n){return String(n).padStart(2,'0');}
 var now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
+// La recherche de One-Eighty filtre sur la DERNIÈRE REVUE, pas sur la date de transaction : on cherche large (la revue est
+// toujours égale ou postérieure à la transaction) puis on ne garde que les transactions du 1er du mois précédent à aujourd'hui.
+var DEB=from.getFullYear()+'-'+pad(from.getMonth()+1)+'-01', FIN=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
 var F={txtDealer:'',txtQuoteID:'',cmbMonth:String(from.getMonth()+1),txtDay:'1',cmbYear:String(from.getFullYear()),cmbMonthTo:String(now.getMonth()+1),txtDayTo:String(now.getDate()),cmbYearTo:String(now.getFullYear()),txtStockNum:'',cmbMake:'0',cmbStatus:'',cmbSalesRep:'0'};
 var p=new URLSearchParams();
 var frm=document.forms.frmQuotes;
@@ -265,11 +269,12 @@ post(BASE).then(function(html){
   var tbl=listTable(d);
   if(!tbl)throw new Error(/quote_load/.test(html)&&/frmQuotes/.test(html)?'aucune proposition en gros pour la période':'liste introuvable (êtes-vous connecté(e) à One-Eighty ?)');
   var rows=[].slice.call(tbl.rows).slice(1).map(function(r){var c=[].slice.call(r.cells).map(txt);var veh=(c[7]||'').match(/^(\d{4})\s+(\S+)\s*(.*)$/)||[];return {id:c[0],date:pDate(c[1]),acheteur:(c[3]||'').replace(/\s*-\s*,?\s*$/,''),rep:c[4],stock:(c[5]||'').replace(/\s*\(W\)\s*$/,''),statut:c[6],vehicule:c[7],annee:veh[1]||'',marque:veh[2]||'',modele:veh[3]||'',facture:c[8]||'',approb:c[9]||''};}).filter(function(r){return /^\d+$/.test(r.id);});
+  rows=rows.filter(function(r){return r.date>=DEB&&r.date<=FIN;});   // date de transaction, pas la dernière revue
   var inv=rows.filter(function(r){return r.facture;}),i=0;
   function next(){if(i>=inv.length)return Promise.resolve();var r=inv[i++];return post(BASE+'&QuoteID='+r.id).then(function(h){var t=(new DOMParser().parseFromString(h,'text/html').body.textContent||'').replace(/\s+/g,' ');var m=t.match(/(?:TOTAL SELLING PRICE|PRIX DE VENTE TOTAL)\s*:?\s*\$?\s*([\d,]+(?:\.\d+)?)/i);r.vendant=m?money(m[1]):'';var v=t.match(/(?:VIN|NIV)\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i)||t.match(/[^A-Z0-9]([A-HJ-NPR-Z0-9]{17})[^A-Z0-9]/i);r.niv=v?v[1]:'';}).catch(function(){}).then(next);}
   return Promise.all([next(),next(),next(),next()]).then(function(){return rows;});
 }).then(function(rows){
-  if(!rows.length)throw new Error('aucune proposition en gros pour la période');
+  if(!rows.length)throw new Error('aucune vente en gros entre le '+DEB+' et le '+FIN+' (dates de transaction)');
   var msg={type:'oe-wholesale-seed',id:String(Date.now()),at:new Date().toISOString(),rows:rows};
   var k=0,iv=setInterval(function(){if(k++>300){clearInterval(iv);return;}try{w.postMessage(msg,AO);}catch(e){}},1000);
   window.addEventListener('message',function(e){if(e.origin!==AO||!e.data)return;if(e.data.type==='hacc-board-ready'){try{w.postMessage(msg,AO);}catch(x){}}if(e.data.type==='hacc-board-ack'){clearInterval(iv);alert((e.data.ok?'✓ ':'✗ ')+e.data.msg);}});
