@@ -124,7 +124,9 @@ td.idx{white-space:nowrap}
 
 /* ---- Ventes wholesale : statuts ---- */
 .veh tr.st-livre td{background:var(--liv-bg)}
+.veh tr.st-comptabilise td{background:var(--ok-bg)}                 /* Comptabilisé : vert, comme les boards neuf et usagé */
 .veh tr.st-paye td{background:var(--ok-bg)}
+.veh tr.st-paye td:first-child{box-shadow:inset 3px 0 0 var(--ok)}  /* Payé : vert avec une barre à gauche */
 .veh tr.st-cancel td{background:var(--bad-bg);color:var(--muted)}.veh tr.st-cancel td.num{text-decoration:line-through}
 .vi.w{width:110px}.vi.n{width:96px;text-align:right}.vi.x{width:200px}
 .p-liv{background:var(--liv-bg);color:var(--liv)}
@@ -173,7 +175,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='2';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
+<script>window.HACC_VERSION='4';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
 <script src="shim.js?v=4"></script>
 </head>
 <body>
@@ -242,23 +244,30 @@ var HO='https://isw.dlsaccelerator.com';
 if(location.origin!==HO){alert('Ouvrez d\'abord One-Eighty (Ventes → Trouver Cot / Facture en gros), puis cliquez ce favori.');return;}
 var w=window.open(APP+'#import','hacc_board');
 var AO=new URL(APP).origin;
-var BASE=HO+'/webasp/Sales/wholesale/quote_load.asp?mode=wholesale';
+var BASE=HO+'/webasp/Sales/wholesale/quote_load.asp?mode=wholesale&add=';
 function pad(n){return String(n).padStart(2,'0');}
 var now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
-var body=new URLSearchParams({txtDealer:'',txtQuoteID:'',cmbMonth:String(from.getMonth()+1),txtDay:'1',cmbYear:String(from.getFullYear()),cmbMonthTo:String(now.getMonth()+1),txtDayTo:String(now.getDate()),cmbYearTo:String(now.getFullYear()),txtStockNum:'',cmbMake:'0',cmbStatus:'',cmbSalesRep:'0'}).toString();
+var F={txtDealer:'',txtQuoteID:'',cmbMonth:String(from.getMonth()+1),txtDay:'1',cmbYear:String(from.getFullYear()),cmbMonthTo:String(now.getMonth()+1),txtDayTo:String(now.getDate()),cmbYearTo:String(now.getFullYear()),txtStockNum:'',cmbMake:'0',cmbStatus:'',cmbSalesRep:'0'};
+var p=new URLSearchParams();
+var frm=document.forms.frmQuotes;
+if(frm){for(var i=0;i<frm.elements.length;i++){var el=frm.elements[i];if(el.name&&!/button|submit|reset/.test(el.type))p.set(el.name,F.hasOwnProperty(el.name)?F[el.name]:(el.value||''));}}
+Object.keys(F).forEach(function(k){if(!p.has(k))p.set(k,F[k]);});
+var body=p.toString();
 function post(url){return fetch(url,{method:'POST',credentials:'include',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){if(!r.ok)throw new Error('One-Eighty a répondu '+r.status);return r.text();});}
 var MON={jan:1,janv:1,feb:2,fev:2,'fév':2,mar:3,apr:4,avr:4,may:5,mai:5,jun:6,juin:6,jul:7,juil:7,aug:8,aout:8,'août':8,sep:9,sept:9,oct:10,nov:11,dec:12,'déc':12};
 function pDate(s){var m=String(s||'').trim().match(/^([A-Za-zéû]+)\.?\s+(\d{1,2}),?\s+(\d{4})/);if(!m)return '';var mm=MON[m[1].toLowerCase()];return mm?m[3]+'-'+pad(mm)+'-'+pad(m[2]):'';}
 function txt(el){return (el&&el.textContent||'').replace(/\s+/g,' ').trim();}
-function money(s){var n=parseFloat(String(s||'').replace(/[^\d.-]/g,''));return isNaN(n)?'':n;}
+function money(s){var n=parseFloat(String(s||'').replace(/,/g,'').replace(/[^\d.-]/g,''));return isNaN(n)?'':n;}
+// La liste revient en français ou en anglais selon la session : on repère le tableau par ses liens selectWSQuote, pas par le texte des titres.
+function listTable(d){var ts=[].slice.call(d.querySelectorAll('table'));for(var i=0;i<ts.length;i++){if(ts[i].rows.length>1&&/selectWSQuote/.test(ts[i].innerHTML)&&ts[i].rows[0].cells.length>=9)return ts[i];}return null;}
 post(BASE).then(function(html){
   var d=new DOMParser().parseFromString(html,'text/html');
-  var tbl=[].slice.call(d.querySelectorAll('table')).filter(function(t){return t.rows.length>1&&/Transaction/.test(txt(t.rows[0]));})[0];
-  if(!tbl)throw new Error('liste des factures introuvable (êtes-vous connecté(e) à One-Eighty ?)');
+  var tbl=listTable(d);
+  if(!tbl)throw new Error(/quote_load/.test(html)&&/frmQuotes/.test(html)?'aucune proposition en gros pour la période':'liste introuvable (êtes-vous connecté(e) à One-Eighty ?)');
   var rows=[].slice.call(tbl.rows).slice(1).map(function(r){var c=[].slice.call(r.cells).map(txt);var veh=(c[7]||'').match(/^(\d{4})\s+(\S+)\s*(.*)$/)||[];return {id:c[0],date:pDate(c[1]),acheteur:(c[3]||'').replace(/\s*-\s*,?\s*$/,''),rep:c[4],stock:(c[5]||'').replace(/\s*\(W\)\s*$/,''),statut:c[6],vehicule:c[7],annee:veh[1]||'',marque:veh[2]||'',modele:veh[3]||'',facture:c[8]||'',approb:c[9]||''};}).filter(function(r){return /^\d+$/.test(r.id);});
   var inv=rows.filter(function(r){return r.facture;}),i=0;
-  function next(){if(i>=inv.length)return Promise.resolve();var r=inv[i++];return post(BASE+'&QuoteID='+r.id+'&add=').then(function(h){var t=txt(new DOMParser().parseFromString(h,'text/html').body);var p=t.match(/PRIX DE VENTE TOTAL:\s*\$?\s*([\d,]+(?:\.\d+)?)/i);r.vendant=p?money(p[1].replace(/,/g,'')):'';var v=t.match(/NIV:\s*([A-HJ-NPR-Z0-9]{17})/);r.niv=v?v[1]:'';}).catch(function(){}).then(next);}
-  return Promise.all([next(),next(),next()]).then(function(){return rows;});
+  function next(){if(i>=inv.length)return Promise.resolve();var r=inv[i++];return post(BASE+'&QuoteID='+r.id).then(function(h){var t=(new DOMParser().parseFromString(h,'text/html').body.textContent||'').replace(/\s+/g,' ');var m=t.match(/(?:TOTAL SELLING PRICE|PRIX DE VENTE TOTAL)\s*:?\s*\$?\s*([\d,]+(?:\.\d+)?)/i);r.vendant=m?money(m[1]):'';var v=t.match(/(?:VIN|NIV)\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i)||t.match(/[^A-Z0-9]([A-HJ-NPR-Z0-9]{17})[^A-Z0-9]/i);r.niv=v?v[1]:'';}).catch(function(){}).then(next);}
+  return Promise.all([next(),next(),next(),next()]).then(function(){return rows;});
 }).then(function(rows){
   if(!rows.length)throw new Error('aucune proposition en gros pour la période');
   var msg={type:'oe-wholesale-seed',id:String(Date.now()),at:new Date().toISOString(),rows:rows};

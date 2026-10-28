@@ -11,7 +11,7 @@ const normName=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperC
 const todayTO=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto'});
 const fmtAt=at=>{const d=new Date(at);return d.toLocaleDateString('fr-CA',{timeZone:'America/Toronto',day:'numeric',month:'long',year:'numeric'})+' à '+d.toLocaleTimeString('fr-CA',{timeZone:'America/Toronto',hour:'2-digit',minute:'2-digit'})};
 const ACHETEURS=['STRATEGIA','OPENLANE','EBLOCK','JPC AUTO','WHOLESALE EXPRESS','TRADEREV','MONTMORENCY FORD'];
-const STATUTS=[['vendu','Vendu'],['livre','Livré'],['paye','Payé'],['cancel','Annulé']];
+const STATUTS=[['vendu','Vendu'],['livre','Livré'],['comptabilise','Comptabilisé'],['paye','Payé'],['cancel','Annulé']];
 const isManual=k=>String(k||'').startsWith('WS-');
 let NOTES={}, CFG={objectif:40000}, DB=null, USER=null, CAN_EDIT=false, VMONTH=todayTO().slice(0,7), INV=[], COUTS=null, LAST_AT='';
 const profit=v=>num(v.vendant)-num(v.coutant);
@@ -27,7 +27,7 @@ function summary(){
   const rows=monthSales(), live=rows.filter(alive), canc=rows.length-live.length;
   const tp=live.reduce((a,x)=>a+profit(x.n.vente||{}),0), tv=live.reduce((a,x)=>a+num(x.n.vente?.vendant),0), tc=live.reduce((a,x)=>a+num(x.n.vente?.coutant),0);
   const obj=num(CFG.objectif)||0, pct=obj?Math.round(tp/obj*100):0;
-  const livres=live.filter(x=>['livre','paye'].includes(x.n.vente?.statut)).length, payes=live.filter(x=>x.n.vente?.statut==='paye').length, neg=live.filter(x=>profit(x.n.vente||{})<0).length;
+  const livres=live.filter(x=>['livre','comptabilise','paye'].includes(x.n.vente?.statut)).length, compta=live.filter(x=>['comptabilise','paye'].includes(x.n.vente?.statut)).length, payes=live.filter(x=>x.n.vente?.statut==='paye').length, neg=live.filter(x=>profit(x.n.vente||{})<0).length;
   const m={};live.forEach(x=>{const nm=String(x.n.vente?.acheteur||'').trim().toUpperCase()||'—';m[nm]=m[nm]||{d:0,p:0};m[nm].d++;m[nm].p+=profit(x.n.vente||{})});
   const list=Object.entries(m).sort((a,b)=>b[1].d-a[1].d||b[1].p-a[1].p);
   let bi=-1,bv=-Infinity;list.forEach(([,x],i)=>{if(x.p>bv){bv=x.p;bi=i}});
@@ -37,7 +37,7 @@ function summary(){
     <div class="kpi"><b>${live.length?moneyS(tp/live.length):'—'}</b><span>Profit moyen par auto${neg?` · ${neg} à perte`:''}</span></div>
     <div class="kpi"><b>${money(tv)}</b><span>Total vendant</span></div>
     <div class="kpi"><b>${money(tc)}</b><span>Total coûtant</span></div>
-    <div class="kpi"><b>${livres}<small> / ${live.length}</small></b><span>Livrées · ${payes} payée${payes>1?'s':''}</span></div>
+    <div class="kpi"><b>${compta}<small> / ${live.length}</small></b><span>Comptabilisées · ${livres} livrée${livres>1?'s':''} · ${payes} payée${payes>1?'s':''}</span></div>
   </div>
   <div class="vboards" style="margin-top:10px"><div class="vbox"><h3>Acheteurs</h3>${list.length?`<table class="mini"><tr><th></th><th class="num">Autos</th><th class="num">Profit</th></tr>${list.map(([nm,x],i)=>`<tr><td>${i===0?'<span class="top" title="Le plus d\'autos">TOP 1</span> ':''}${esc(nm)}</td><td class="num">${x.d}</td><td class="num">${i===bi?'<span class="top top-m" title="Meilleur profit">TOP 1 $</span> ':''}${moneyS(x.p)}</td></tr>`).join('')}</table>`:'<p class="hint">Rien encore ce mois-ci.</p>'}</div></div>`;
 }
@@ -74,7 +74,7 @@ function render(){
    <datalist id="dl-acheteur">${acheteurs.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
    <p class="sec-title sec-add">Ventes de ${esc(MOIS[+VMONTH.slice(5)-1])} (${rows.filter(alive).length}) <button type="button" class="addrow" data-addsale title="Ajouter une vente" aria-label="Ajouter une vente wholesale en ${esc(MOIS[+VMONTH.slice(5)-1])}" ${DB?'':'disabled'}>+</button></p>
    <div class="box"><div class="tbl" data-ts="mois"><table class="veh">${HEAD}<tbody>${rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="15" class="empty-row">Aucune vente wholesale ${esc(MOIS[+VMONTH.slice(5)-1])}. Cliquez <b>+</b> pour en ajouter une.</td></tr>`}</tbody></table></div></div>
-   <p class="hint">Couleurs : <span class="pill p-liv">Livré</span> <span class="pill p-ok">Payé</span> <span class="pill p-bad">Annulé</span> (exclu des totaux). Le <b>✕</b> au bout de la ligne supprime une vente (doublon ou erreur). « Mettre à jour depuis One-Eighty » ajoute les factures en gros du mois (date, stock, auto, acheteur, vendant, no de facture) ; le coûtant reste à entrer ici.</p>`;
+   <p class="hint">Couleurs : <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-ok">Payé</span> <span class="pill p-bad">Annulé</span> (exclu des totaux). Le <b>✕</b> au bout de la ligne supprime une vente (doublon ou erreur). « Mettre à jour depuis One-Eighty » ajoute les factures en gros du mois (date, stock, auto, acheteur, vendant, no de facture) ; le coûtant reste à entrer ici.</p>`;
   summary(); topBars(document.getElementById('view'));
   document.getElementById('vmonth').onchange=e=>{VMONTH=e.target.value;render()};
 }
