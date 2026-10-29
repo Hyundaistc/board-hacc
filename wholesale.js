@@ -13,6 +13,7 @@ const fmtAt=at=>{const d=new Date(at);return d.toLocaleDateString('fr-CA',{timeZ
 const ACHETEURS=['STRATEGIA','OPENLANE','EBLOCK','JPC AUTO','WHOLESALE EXPRESS','TRADEREV','MONTMORENCY FORD'];
 const STATUTS=[['vendu','Vendu'],['livre','Livré'],['comptabilise','Comptabilisé'],['paye','Payé'],['cancel','Annulé']];
 const isManual=k=>String(k||'').startsWith('WS-');
+let PRET_OK,PRET_FAIT=false;const PRET=new Promise(r=>PRET_OK=r);
 let NOTES={}, CFG={objectif:40000}, DB=null, USER=null, CAN_EDIT=false, VMONTH=todayTO().slice(0,7), INV=[], COUTS=null, LAST_AT='';
 const profit=v=>num(v.vendant)-num(v.coutant);
 const alive=x=>(x.n.vente?.statut||'vendu')!=='cancel';
@@ -148,9 +149,10 @@ function topBars(root){
 }
 
 // ---------- Synchro One-Eighty (favori « ⟳ Wholesale One-Eighty ») ----------
-// Reçoit la liste One-Eighty « Véhicules vendus » (stockcards/inventory.asp?mode=sold) : seulement les unités en gros (W) vendues ce mois-ci.
+// Reçoit la liste One-Eighty « Véhicules vendus » (stockcards/inventory.asp?mode=sold), lue carte de stock par carte de stock :
+// seulement les unités vendues ce mois-ci, cochées « Unité vente en gros seulement » et au statut de transaction Comptabilisé (avec le coût).
 // Le mois du board devient exactement cette liste : chaque unité est ajoutée ou mise à jour (date, auto, vendant, acheteur, statut Comptabilisé ;
-// le coûtant, la facture et la note sont gardés), puis les ventes du mois qui n'y sont pas sont retirées (après confirmation).
+// coûtant = coût de la carte de stock ; la facture et la note sont gardées), puis les ventes du mois qui n'y sont pas sont retirées (après confirmation).
 const ACH_ALIAS=[[/STRATEGIA/i,'STRATEGIA'],[/JPC/i,'JPC AUTO'],[/EBLOCK|E-BLOCK/i,'EBLOCK'],[/TRADEREV|TRADE REV/i,'TRADEREV'],[/OPENLANE|OPEN LANE/i,'OPENLANE'],[/WHOLESALE ?EXPRESS|WHOLESALEXPRESS/i,'WHOLESALE EXPRESS'],[/KARFLIP/i,'KARFLIP']];
 const aliasAch=s=>{const t=String(s||'').replace(/\s*-\s*,?\s*$/,'').trim();const a=ACH_ALIAS.find(([re])=>re.test(t));return a?a[1]:t.toUpperCase()};
 const monthsApart=(a,b)=>{const [ya,ma]=String(a||'').split('-').map(Number),[yb,mb]=String(b||'').split('-').map(Number);return (ya&&yb)?Math.abs((ya*12+ma)-(yb*12+mb)):99};
@@ -162,20 +164,23 @@ if(!DB.batch){for(const k of keys)await col.doc(k).delete();return}
 for(let i=0;i<keys.length;i+=400){const bb=DB.batch();keys.slice(i,i+400).forEach(k=>bb.delete(col.doc(k)));await bb.commit()}}
 async function importOE(data){
 if(!DB)throw new Error('Connectez-vous pour mettre à jour les ventes wholesale.');
+await Promise.race([PRET,new Promise(r=>setTimeout(r,15000))]);if(!PRET_FAIT)throw new Error('Le board n\'a pas fini de charger les ventes, réessayez dans quelques secondes.');
 if(!data||data.source!=='vendus')throw new Error('Ancien favori : ouvrez « Mettre à jour depuis One-Eighty » dans le board et réinstallez le favori ⟳ Wholesale One-Eighty.');
 const t=x=>String(x??'').trim(),mois=t(data.mois);
 const rows=(Array.isArray(data.rows)?data.rows:[]).filter(r=>normName(r.stock)&&/^\d{4}-\d{2}-\d{2}$/.test(t(r.date))&&t(r.date).slice(0,7)===mois);
 if(!/^\d{4}-\d{2}$/.test(mois)||!rows.length)throw new Error('Aucune unité en gros vendue ce mois-ci dans One-Eighty.');
 let added=0,upd=0,same=0;const sets=[],bak={},garder=new Set();
-const trouve=(stock,ok)=>(Object.entries(NOTES).find(([k,n])=>n&&n.vendu&&!garder.has(k)&&normName(n.vente?.stock)===stock&&ok(n))||[])[0];
+// une vente déjà au board pour ce stock (les fiches entrées à la main ou importées avant passent avant les fiches DLS-)
+const trouve=(stock,ok)=>(Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&!garder.has(k)&&normName(n.vente?.stock)===stock&&ok(n)).sort((a,b)=>(a[0].startsWith('DLS-')?1:0)-(b[0].startsWith('DLS-')?1:0))[0]||[])[0];
 for(const r of rows){
 const stock=normName(r.stock),date=t(r.date),niv=t(r.niv).slice(-6).toUpperCase();
 const v={stock:t(r.stock).toUpperCase(),marque:t(r.marque).toUpperCase(),modele:t(r.modele).toUpperCase(),annee:t(r.annee),vendant:r.vendant!=null&&r.vendant!==''?String(num(r.vendant)):'',acheteur:aliasAch(r.acheteur)};
+if(r.coutant!=null&&r.coutant!==''&&num(r.coutant)>0)v.coutant=String(num(r.coutant));
 let k=trouve(stock,n=>(n.soldAt||'').slice(0,7)===mois)||trouve(stock,n=>monthsApart(n.soldAt,date)<=1);
 if(!k){
 k='DLS-'+stock+'-'+date.replace(/-/g,'');let i=2;while(garder.has(k)||(NOTES[k]&&NOTES[k].vendu))k='DLS-'+stock+'-'+date.replace(/-/g,'')+'-'+(i++);
 const o={...v,niv,statut:'comptabilise',importe:'One-Eighty véhicules vendus'};
-const c=COUTS&&COUTS[stock];if(c&&c.c)o.coutant=String(Math.round(c.c));
+const c=COUTS&&COUTS[stock];if(!o.coutant&&c&&c.c)o.coutant=String(Math.round(c.c));
 bak[k]=NOTES[k];NOTES[k]={vendu:true,comment:'',soldAt:date,vente:o};sets.push(k);garder.add(k);added++;continue}
 garder.add(k);
 const n=NOTES[k],o={...(n.vente||{})};let ch=n.soldAt!==date;
@@ -210,7 +215,7 @@ async function saveCfg(){if(!DB)return;try{await DB.doc('config/ventes').set({ob
   DB.collection('suivi').onSnapshot(s=>{const ae=document.activeElement?.dataset||{};
     if(typeof s.docChanges==='function')s.docChanges().forEach(ch=>{if(ch.type==='removed')delete NOTES[ch.doc.id]});
     LAST_AT='';s.docs.forEach(d=>{if(!d.exists)return;const x=d.data()||{};if(x.at&&x.at>LAST_AT)LAST_AT=x.at;if(ae.vk===d.id&&!first)return;NOTES[d.id]={vendu:!!x.vendu,comment:x.comment||'',soldAt:x.soldAt||'',vente:x.vente||{}}});
-    first=false;if(!ae.vk)render();else summary()},e=>setStatus('Synchronisation interrompue, rechargez la page'));
+    first=false;PRET_FAIT=true;PRET_OK();if(!ae.vk)render();else summary()},e=>setStatus('Synchronisation interrompue, rechargez la page'));
   DB.doc('config/ventes').onSnapshot(s=>{if(s.exists){const x=s.data()||{};CFG={objectif:x.objectif??40000};if(document.activeElement?.id!=='vobj'){const o=document.getElementById('vobj');if(o)o.value=CFG.objectif;summary()}}});
   // Inventaire usagé (lecture seule) : suggestions de no de stock et remplissage marque / modèle / NIV
   if(DB.rawDoc){try{DB.rawDoc('usage_inventaire/actuel').onSnapshot(s=>{if(!s.exists)return;try{const r=JSON.parse((s.data()||{}).json||'[]');if(Array.isArray(r)){INV=r;if(!document.activeElement?.dataset?.vk)render()}}catch(e){}},()=>{})}catch(e){}

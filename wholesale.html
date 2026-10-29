@@ -176,7 +176,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='9';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
+<script>window.HACC_VERSION='10';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
 <script src="shim.js?v=5"></script>
 </head>
 <body>
@@ -219,9 +219,9 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
   <p class="hint">À installer une seule fois : glissez ce bouton dans votre barre de favoris.</p>
   <p><a class="bm" id="bm-link" href="#">⟳ Wholesale One-Eighty</a></p>
   <ol>
-    <li>Ouvrez One-Eighty et connectez-vous (<a href="https://isw.dlsaccelerator.com/webasp/stockcards/inventory.asp?mode=sold&amp;view=&amp;Find=true" target="_blank" rel="noopener">Stocks → Véhicules vendus</a>).</li>
-    <li>Cliquez le favori <b>⟳ Wholesale One-Eighty</b> pendant que vous êtes sur One-Eighty.</li>
-    <li>Le board s'ouvre : les <b>unités vendues en gros</b> (Disponibilité « Delivered (W) ») du mois dans la liste « Véhicules vendus » sont ajoutées ou mises à jour en <b>Comptabilisé</b> (date, stock, auto, NIV, acheteur, vendant). Les ventes du mois qui ne sont pas dans cette liste sont retirées (le board demande d'abord). Le coûtant reste à entrer ici.</li>
+    <li>Ouvrez One-Eighty et affichez la liste <a href="https://isw.dlsaccelerator.com/webasp/stockcards/inventory.asp?mode=sold&amp;view=&amp;Find=true" target="_blank" rel="noopener">Stocks → Véhicules vendus</a> (votre recherche du mois).</li>
+    <li>Cliquez le favori <b>⟳ Wholesale One-Eighty</b> pendant que cette liste est à l'écran. Il ouvre chaque transaction du mois (environ 1 seconde par auto).</li>
+    <li>Le board s'ouvre : les autos du mois cochées <b>« Unité vente en gros seulement »</b> et au statut de transaction <b>Comptabilisé</b> sont ajoutées ou mises à jour (date, stock, auto, NIV, acheteur, prix vendant et <b>coût</b> de la carte de stock). Les ventes du mois qui ne sont pas dans One-Eighty sont retirées (le board demande d'abord).</li>
   </ol>
   <div class="adminbox admin-only" hidden><input type="file" id="importfile" accept=".json,application/json" hidden><span class="hint" id="importmsg" role="status"></span></div>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="dlg-close" type="button">Fermer</button></p>
@@ -242,11 +242,11 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 </dialog>
 <script type="text/plain" id="bm-src">var APP='__APP__'.replace(/index\.html$/,'wholesale.html');
 var HO='https://isw.dlsaccelerator.com';
-if(location.origin!==HO){alert('Ouvrez d\'abord One-Eighty (Stocks → Véhicules vendus), puis cliquez ce favori.');return;}
+if(location.origin!==HO){alert('Ouvrez d\'abord One-Eighty (Stocks → Véhicules vendus), puis cliquez ce favori sur cette liste.');return;}
 var w=window.open(APP+'#import','hacc_board');
 if(!w||w===window){alert('Le board n\'a pas pu s\'ouvrir : autorisez les fenêtres surgissantes pour One-Eighty, puis recliquez le favori.');return;}
 var AO=new URL(APP).origin;
-// Liste One-Eighty « Véhicules vendus » : on garde seulement les unités en gros (Disponibilité « (W) ») vendues ce mois-ci.
+// Liste One-Eighty « Véhicules vendus » : on ouvre chaque transaction du mois et on garde les unités en gros comptabilisées (avec le coût).
 var URLV=HO+'/webasp/stockcards/inventory.asp?mode=sold&view=&Find=true';
 function pad(n){return String(n).padStart(2,'0');}
 var now=new Date(),MOIS=now.getFullYear()+'-'+pad(now.getMonth()+1);
@@ -256,7 +256,9 @@ function pDate(s){s=String(s||'').trim();var m=s.match(/^(\d{4})(\d{2})(\d{2})$/
   m=s.match(/^([A-Za-zéûÉ]+)\.?\s+(\d{1,2}),?\s+(\d{4})/);if(!m)return '';var k=m[1].toLowerCase(),mm=MON[k]||MON[k.slice(0,4)]||MON[k.slice(0,3)];return mm?m[3]+'-'+pad(mm)+'-'+pad(m[2]):'';}
 function txt(el){return (el&&el.textContent||'').replace(/\s+/g,' ').trim();}
 function money(s){var n=parseFloat(String(s||'').replace(/,/g,'').replace(/[^\d.-]/g,''));return isNaN(n)?'':n;}
-fetch(URLV,{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('One-Eighty a répondu '+r.status);return r.text();}).then(function(h){
+// La liste affichée à l'écran (votre recherche « Véhicules vendus ») est utilisée telle quelle ; ailleurs dans One-Eighty, on la charge.
+var surListe=/\/stockcards\/inventory\.asp/i.test(location.pathname)&&document.body.innerHTML.indexOf('selectVehicle(')>=0;
+(surListe?Promise.resolve(document.documentElement.outerHTML):fetch(URLV,{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('One-Eighty a répondu '+r.status);return r.text();})).then(function(h){
   var d=new DOMParser().parseFromString(h,'text/html');
   var t=[].slice.call(d.querySelectorAll('table')).filter(function(x){var r0=x.rows[0];return r0&&r0.cells.length>8&&/(NIV|VIN)/.test(txt(r0))&&!x.querySelector('table');})[0];
   if(!t)throw new Error('liste des véhicules vendus introuvable (êtes-vous connecté(e) à One-Eighty ?)');
@@ -264,13 +266,27 @@ fetch(URLV,{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('O
   function col(re){for(var i=0;i<H.length;i++)if(re.test(H[i]))return i;return -1;}
   var C={stock:col(/^(Num[ée]ro|Stock)/i),annee:col(/^(Ann[ée]e|Year)/i),marque:col(/^(Marque|Make)/i),modele:col(/^(Mod[èe]le|Model)/i),niv:col(/^(NIV|VIN)$/i),prix:col(/^(Prix|Price)/i),dispo:col(/^(Disponibilit|Availab)/i),acheteur:col(/^(Vendu [ÀA]|Sold To)/i),date:col(/^(Date Vendu|Date Sold|Sold Date)/i),ymd:col(/^#V$/i)};
   if(C.stock<0||C.dispo<0||(C.date<0&&C.ymd<0))throw new Error('colonnes de la liste non reconnues');
-  var rows=[];
+  var cand=[];
   [].slice.call(t.rows).slice(1).forEach(function(tr){var c=tr.cells;function g(k){return C[k]>=0&&c[C[k]]?txt(c[C[k]]):'';}
-    var stock=g('stock');if(!stock||!/\(W\)/i.test(g('dispo')))return;                       // unité en gros seulement
+    var stock=g('stock'),m=(c[C.stock]&&c[C.stock].innerHTML||'').match(/selectVehicle\('(\d+)'/);if(!stock||!m)return;
     var date=pDate(g('ymd'))||pDate(g('date'));if(date.slice(0,7)!==MOIS)return;            // vendue ce mois-ci
-    rows.push({stock:stock,date:date,annee:g('annee'),marque:g('marque'),modele:g('modele'),niv:g('niv').replace(/[^A-Z0-9]/gi,''),vendant:money(g('prix')),acheteur:g('acheteur')});});
-  if(!rows.length)throw new Error('aucune unité en gros vendue ce mois-ci dans la liste « Véhicules vendus »');
-  return rows;
+    cand.push({id:m[1],stock:stock,date:date,annee:g('annee'),marque:g('marque'),modele:g('modele'),niv:g('niv').replace(/[^A-Z0-9]/gi,''),vendant:money(g('prix')),acheteur:g('acheteur')});});
+  if(!cand.length)throw new Error('aucun véhicule vendu ce mois-ci dans la liste « Véhicules vendus »');
+  // Chaque transaction : carte de stock → « Unité vente en gros seulement » cochée + statut de transaction Comptabilisé + coût
+  var rows=[],i=0;
+  function next(){if(i>=cand.length)return Promise.resolve();var r=cand[i++];
+    return fetch(HO+'/webasp/stockcards/stockcard.asp?VecID='+r.id,{credentials:'include'}).then(function(x){return x.text();}).then(function(h){
+      var d=new DOMParser().parseFromString(h,'text/html');
+      var gros=d.querySelector('input[name="chkIsWholesale"],#chkIsWholesale');if(!gros||!gros.checked)return;
+      var st=d.querySelector('select[name="cmbDealStatus"],#cmbDealStatus'),so=st&&st.options[st.selectedIndex];if(!so||!/comptabilis|posted|booked/i.test(txt(so)))return;
+      var tot=[].slice.call(d.querySelectorAll('td')).filter(function(td){return /^(PRIX TOTAL|TOTAL PRICE)/i.test(txt(td))&&!td.querySelector('td');})[0],tr=tot&&tot.parentNode;
+      if(tr){var cs=tr.cells,cout=money((txt(cs[cs.length-1]).match(/-?\$?\s*[\d,]+(\.\d+)?/)||[''])[0]),prix=money((txt(cs[1]).match(/-?\$?\s*[\d,]+(\.\d+)?/)||[''])[0]);if(cout!=='')r.coutant=cout;if(prix!=='')r.vendant=prix;}
+      var vin=d.querySelector('input[name="txtVIN"],#txtVIN');if(vin&&vin.value)r.niv=vin.value.trim();
+      delete r.id;rows.push(r);
+    }).catch(function(){}).then(next);}
+  return next().then(function(){
+    if(!rows.length)throw new Error('aucune unité en gros comptabilisée ce mois-ci');
+    return rows;});
 }).then(function(rows){
   var msg={type:'oe-wholesale-seed',source:'vendus',mois:MOIS,id:String(Date.now()),at:new Date().toISOString(),rows:rows};
   var k=0,iv=setInterval(function(){if(k++>300){clearInterval(iv);return;}try{w.postMessage(msg,AO);}catch(e){}},1000);
