@@ -1,6 +1,6 @@
 // Échanges · Hyundai St-Constant — véhicules neufs sortis vers d'autres concessionnaires (échanges entre concessionnaires).
 // Même base que les autres boards (Firestore, préfixe echanges_) : une fiche par échange dans « suivi »,
-// {vendu:true, soldAt (date de transaction), vente:{stock, annee, marque, modele, niv, conces, rep, prix, facture, livraison, statut, note, oeId}}.
+// {vendu:true, soldAt (date de transaction), vente:{stock, annee, marque, modele, niv, conces, rep, prix, facture, livraison, statut, note, brut (profit = Brut de véh. One-Eighty), oeId}}.
 // Statuts : alivrer (défaut), livre, comptabilise, cancel (annulé, hors du compte).
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -41,8 +41,9 @@ function rowHtml(x,i){const k=x.k,n=x.n,v=n.vente||{},st=v.statut||'alivrer';
   <td>${vIn(k,'livraison',v.livraison,'type="date" class="vi d"')}</td>
   <td><select class="vi" data-vk="${k}" data-f="statut" aria-label="Statut" ${DB?'':'disabled'}>${STATUTS.map(([val,l])=>`<option value="${val}" ${st===val?'selected':''}>${l}</option>`).join('')}</select></td>
   <td>${vIn(k,'note',v.note,'class="vi x" placeholder="Note"')}</td>
+  <td>${vIn(k,'brut',v.brut,`class="vi n${num(v.brut)<0?' profit-neg':''}" inputmode="decimal" title="Brut de véh. (rapport One-Eighty)"`)}</td>
   <td class="c-del">${DB?`<button type="button" class="delrow" data-delsale="${k}" title="Supprimer cette ligne (doublon ou erreur)" aria-label="Supprimer la ligne ${i+1}">✕</button>`:''}</td></tr>`}
-const HEAD='<thead><tr><th>#</th><th>Date</th><th>Stock</th><th>Année</th><th>Marque</th><th>Modèle</th><th>NIV</th><th>Concessionnaire</th><th>Rep. ventes</th><th class="num">Prix</th><th>Facture</th><th>Livraison</th><th>Statut</th><th>Note</th><th class="c-del" title="Supprimer une ligne"></th></tr></thead>';
+const HEAD='<thead><tr><th>#</th><th>Date</th><th>Stock</th><th>Année</th><th>Marque</th><th>Modèle</th><th>NIV</th><th>Concessionnaire</th><th>Rep. ventes</th><th class="num">Prix</th><th>Facture</th><th>Livraison</th><th>Statut</th><th>Note</th><th class="num">Profit</th><th class="c-del" title="Supprimer une ligne"></th></tr></thead>';
 function render(){
   setSnap();
   const months=[...new Set([todayTO().slice(0,7),...allRows().map(x=>(x.n.soldAt||'').slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m))])].sort().reverse();
@@ -53,8 +54,8 @@ function render(){
    <div id="vsum" style="margin-top:10px"></div>
    <datalist id="dl-conces">${conces.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
    <p class="sec-title sec-add">Véhicules sortis en ${esc(mo)} (<span id="ecount">${rows.filter(alive).length}</span>) <button type="button" class="addrow" data-addsale title="Ajouter un échange" aria-label="Ajouter un échange en ${esc(mo)}" ${DB?'':'disabled'}>+</button></p>
-   <div class="box"><div class="tbl" data-ts="mois"><table class="veh">${HEAD}<tbody>${rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="15" class="empty-row">Aucun échange en ${esc(mo)}. Cliquez « Mettre à jour depuis One-Eighty » ou <b>+</b>.</td></tr>`}</tbody></table></div></div>
-   <p class="hint">Couleurs : <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-bad">Annulé</span> (exclu du compte). Le <b>✕</b> au bout de la ligne supprime un échange (doublon ou erreur). La date est la date de transaction dans One-Eighty.</p>`;
+   <div class="box"><div class="tbl" data-ts="mois"><table class="veh">${HEAD}<tbody>${rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="16" class="empty-row">Aucun échange en ${esc(mo)}. Cliquez « Mettre à jour depuis One-Eighty » ou <b>+</b>.</td></tr>`}</tbody></table></div></div>
+   <p class="hint">Couleurs : <span class="pill p-liv">Livré</span> <span class="pill p-ok">Comptabilisé</span> <span class="pill p-bad">Annulé</span> (exclu du compte). Le <b>✕</b> au bout de la ligne supprime un échange (doublon ou erreur). La date est la date de transaction dans One-Eighty. Le profit est le « Brut de véh. » du rapport One-Eighty.</p>`;
   summary(); topBars(document.getElementById('view'));
   document.getElementById('vmonth').onchange=e=>{VMONTH=e.target.value;render()};
 }
@@ -65,6 +66,7 @@ document.addEventListener('input',e=>{const i=e.target;
   if(!i.dataset||!i.dataset.vk)return;const k=i.dataset.vk,f=i.dataset.f;if(!NOTES[k])return;
   if(f==='soldAt'){NOTES[k]={...NOTES[k],soldAt:i.value}}else{NOTES[k]={...NOTES[k],vente:{...(NOTES[k].vente||{}),[f]:i.value}}}
   if(f==='statut'){const tr=i.closest('tr');if(tr)tr.className='st-'+i.value}
+  if(f==='brut')i.classList.toggle('profit-neg',num(i.value)<0);
   summary();clearTimeout(vt[k]);vt[k]=setTimeout(()=>{saveNote(k);if(f==='soldAt')setTimeout(()=>{if(!document.activeElement?.dataset?.vk)render()},50)},i.tagName==='SELECT'||i.type==='date'?0:800)});
 document.addEventListener('change',e=>{const i=e.target;if(i.tagName==='SELECT'&&i.dataset.vk)i.dispatchEvent(new Event('input',{bubbles:true}))});
 function newDate(ym){const t=todayTO();if(ym===t.slice(0,7))return t;if(ym<t.slice(0,7)){const d=new Date(+ym.slice(0,4),+ym.slice(5),0);return ym+'-'+String(d.getDate()).padStart(2,'0')}return ym+'-01'}
@@ -130,11 +132,12 @@ async function importOE(data){
   for(const r of rows){
     if(!t(r.facture)){quotes++;continue}                         // proposition pas encore facturée
     const stock=normName(r.stock),date=t(r.date).slice(0,10);if(!stock||!/^\d{4}-\d{2}-\d{2}$/.test(date))continue;
-    const v={stock:t(r.stock).toUpperCase(),annee:t(r.annee),marque:t(r.marque).toUpperCase(),modele:t(r.modele).toUpperCase(),niv:t(r.niv).slice(-6),conces:t(r.conces).toUpperCase(),rep:t(r.rep),prix:r.prix!=null&&r.prix!==''?String(num(r.prix)):'',facture:t(r.facture),oeId:t(r.id)};
+    const v={stock:t(r.stock).toUpperCase(),annee:t(r.annee),marque:t(r.marque).toUpperCase(),modele:t(r.modele).toUpperCase(),niv:t(r.niv).slice(-6),conces:t(r.conces).toUpperCase(),rep:t(r.rep),prix:r.prix!=null&&r.prix!==''?String(num(r.prix)):'',facture:t(r.facture),oeId:t(r.id),brut:r.brut!=null&&r.brut!==''?String(Math.round(num(r.brut)*100)/100):''};
     let k=(Object.entries(NOTES).find(([,n])=>n&&n.vendu&&t(n.vente?.oeId)===v.oeId)||Object.entries(NOTES).find(([,n])=>n&&n.vendu&&normName(n.vente?.stock)===stock&&monthsApart(n.soldAt,date)<=1)||[])[0];
     if(!k){k='OE-'+v.oeId;bak[k]=undefined;NOTES[k]={vendu:true,comment:'',soldAt:date,vente:{...v,statut:'alivrer',importe:'One-Eighty proposition '+v.oeId}};sets.push(k);added++;continue}
     const n=NOTES[k],o={...(n.vente||{})};let ch=false;
     ['annee','marque','modele','niv','conces','rep','prix','facture','oeId'].forEach(f=>{if(!t(o[f])&&t(v[f])){o[f]=v[f];ch=true}});
+    if(v.brut!==''&&t(o.brut)!==v.brut){o.brut=v.brut;ch=true}   // le profit suit toujours One-Eighty
     if(ch){bak[k]=n;NOTES[k]={...n,vente:o};sets.push(k);upd++}else same++;
   }
   if(sets.length){try{await writeNotes(sets)}catch(e){Object.entries(bak).forEach(([k,n])=>{if(n===undefined)delete NOTES[k];else NOTES[k]=n});render();throw new Error('Non enregistré ('+(e&&e.code==='permission-denied'?'accès refusé : règles Firebase à publier ou accès en lecture seule':e.message)+')')}}
