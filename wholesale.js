@@ -152,7 +152,7 @@ function topBars(root){
 // Reçoit la liste One-Eighty « Véhicules vendus » (stockcards/inventory.asp?mode=sold), lue carte de stock par carte de stock :
 // seulement les unités vendues ce mois-ci, cochées « Unité vente en gros seulement » et au statut de transaction Comptabilisé (avec le coût).
 // Le mois du board devient exactement cette liste : chaque unité est ajoutée ou mise à jour (date, auto, vendant, acheteur, statut Comptabilisé ;
-// coûtant = coût de la carte de stock ; la facture et la note sont gardées), puis les ventes du mois qui n'y sont pas sont retirées (après confirmation).
+// coûtant vide = coût de la carte de stock ; la facture et la note sont gardées), puis les ventes du mois qui n'y sont pas sont retirées (après confirmation).
 const ACH_ALIAS=[[/STRATEGIA/i,'STRATEGIA'],[/JPC/i,'JPC AUTO'],[/EBLOCK|E-BLOCK/i,'EBLOCK'],[/TRADEREV|TRADE REV/i,'TRADEREV'],[/OPENLANE|OPEN LANE/i,'OPENLANE'],[/WHOLESALE ?EXPRESS|WHOLESALEXPRESS/i,'WHOLESALE EXPRESS'],[/KARFLIP/i,'KARFLIP']];
 const aliasAch=s=>{const t=String(s||'').replace(/\s*-\s*,?\s*$/,'').trim();const a=ACH_ALIAS.find(([re])=>re.test(t));return a?a[1]:t.toUpperCase()};
 const monthsApart=(a,b)=>{const [ya,ma]=String(a||'').split('-').map(Number),[yb,mb]=String(b||'').split('-').map(Number);return (ya&&yb)?Math.abs((ya*12+ma)-(yb*12+mb)):99};
@@ -175,17 +175,18 @@ const trouve=(stock,ok)=>(Object.entries(NOTES).filter(([k,n])=>n&&n.vendu&&!gar
 for(const r of rows){
 const stock=normName(r.stock),date=t(r.date),niv=t(r.niv).slice(-6).toUpperCase();
 const v={stock:t(r.stock).toUpperCase(),marque:t(r.marque).toUpperCase(),modele:t(r.modele).toUpperCase(),annee:t(r.annee),vendant:r.vendant!=null&&r.vendant!==''?String(num(r.vendant)):'',acheteur:aliasAch(r.acheteur)};
-if(r.coutant!=null&&r.coutant!==''&&num(r.coutant)>0)v.coutant=String(num(r.coutant));
+const ct=r.coutant!=null&&r.coutant!==''&&num(r.coutant)>0?String(num(r.coutant)):''; // coût de la carte de stock : seulement si le coûtant est vide
 let k=trouve(stock,n=>(n.soldAt||'').slice(0,7)===mois)||trouve(stock,n=>monthsApart(n.soldAt,date)<=1);
 if(!k){
 k='DLS-'+stock+'-'+date.replace(/-/g,'');let i=2;while(garder.has(k)||(NOTES[k]&&NOTES[k].vendu))k='DLS-'+stock+'-'+date.replace(/-/g,'')+'-'+(i++);
 const o={...v,niv,statut:'comptabilise',importe:'One-Eighty véhicules vendus'};
-const c=COUTS&&COUTS[stock];if(!o.coutant&&c&&c.c)o.coutant=String(Math.round(c.c));
+if(ct)o.coutant=ct;const c=COUTS&&COUTS[stock];if(!o.coutant&&c&&c.c)o.coutant=String(Math.round(c.c));
 bak[k]=NOTES[k];NOTES[k]={vendu:true,comment:'',soldAt:date,vente:o};sets.push(k);garder.add(k);added++;continue}
 garder.add(k);
 const n=NOTES[k],o={...(n.vente||{})};let ch=n.soldAt!==date;
 Object.entries(v).forEach(([f,val])=>{if(val&&t(o[f])!==val){o[f]=val;ch=true}});
 if(!t(o.niv)&&niv){o.niv=niv;ch=true}
+if(!t(o.coutant)&&ct){o.coutant=ct;ch=true}
 if(!['comptabilise','paye'].includes(o.statut)){o.statut='comptabilise';ch=true}
 if(ch){bak[k]=n;NOTES[k]={...n,soldAt:date,vente:o};sets.push(k);upd++}else same++;
 }

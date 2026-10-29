@@ -176,7 +176,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=2"></script>
-<script>window.HACC_VERSION='10';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
+<script>window.HACC_VERSION='11';window.HACC_APP_SCRIPT='wholesale.js';window.HACC_DB_PREFIX='wholesale_';</script>
 <script src="shim.js?v=5"></script>
 </head>
 <body>
@@ -221,7 +221,7 @@ dialog ol{padding-left:20px;display:flex;flex-direction:column;gap:8px}
   <ol>
     <li>Ouvrez One-Eighty et affichez la liste <a href="https://isw.dlsaccelerator.com/webasp/stockcards/inventory.asp?mode=sold&amp;view=&amp;Find=true" target="_blank" rel="noopener">Stocks → Véhicules vendus</a> (votre recherche du mois).</li>
     <li>Cliquez le favori <b>⟳ Wholesale One-Eighty</b> pendant que cette liste est à l'écran. Il ouvre chaque transaction du mois (environ 1 seconde par auto).</li>
-    <li>Le board s'ouvre : les autos du mois cochées <b>« Unité vente en gros seulement »</b> et au statut de transaction <b>Comptabilisé</b> sont ajoutées ou mises à jour (date, stock, auto, NIV, acheteur, prix vendant et <b>coût</b> de la carte de stock). Les ventes du mois qui ne sont pas dans One-Eighty sont retirées (le board demande d'abord).</li>
+    <li>Le board s'ouvre : les autos du mois cochées <b>« Unité vente en gros seulement »</b> et au statut de transaction <b>Comptabilisé</b> sont ajoutées ou mises à jour (date, stock, auto, NIV, acheteur, prix vendant, et le <b>coût</b> de la carte de stock quand le coûtant est vide). Les ventes du mois qui ne sont pas dans One-Eighty sont retirées (le board demande d'abord).</li>
   </ol>
   <div class="adminbox admin-only" hidden><input type="file" id="importfile" accept=".json,application/json" hidden><span class="hint" id="importmsg" role="status"></span></div>
   <p style="text-align:right;margin:14px 0 0"><button class="gbtn" id="dlg-close" type="button">Fermer</button></p>
