@@ -272,8 +272,8 @@ post(BASE).then(function(html){
   var rows=[].slice.call(tbl.rows).slice(1).map(function(r){var c=[].slice.call(r.cells).map(txt);var veh=(c[7]||'').match(/^(\d{4})\s+(\S+)\s*(.*)$/)||[];return {id:c[0],date:pDate(c[1]),acheteur:(c[3]||'').replace(/\s*-\s*,?\s*$/,''),rep:c[4],stock:(c[5]||'').replace(/\s*\(W\)\s*$/,''),statut:c[6],vehicule:c[7],annee:veh[1]||'',marque:veh[2]||'',modele:veh[3]||'',facture:c[8]||'',approb:c[9]||''};}).filter(function(r){return /^\d+$/.test(r.id);});
   rows=rows.filter(function(r){return r.date>=DEB&&r.date<=FIN;});   // date de transaction, pas la dernière revue
   var inv=rows.filter(function(r){return r.facture;}),i=0;
-  function next(){if(i>=inv.length)return Promise.resolve();var r=inv[i++];return post(BASE+'&QuoteID='+r.id).then(function(h){var t=(new DOMParser().parseFromString(h,'text/html').body.textContent||'').replace(/\s+/g,' ');var m=t.match(/(?:TOTAL SELLING PRICE|PRIX DE VENTE TOTAL)\s*:?\s*\$?\s*([\d,]+(?:\.\d+)?)/i);r.vendant=m?money(m[1]):'';var v=t.match(/(?:VIN|NIV)\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i)||t.match(/[^A-Z0-9]([A-HJ-NPR-Z0-9]{17})[^A-Z0-9]/i);r.niv=v?v[1]:'';}).catch(function(){}).then(next);}
-  return Promise.all([next(),next(),next(),next()]).then(function(){return rows;});
+  function next(){if(i>=inv.length)return Promise.resolve();var r=inv[i++];return post(BASE+'&QuoteID='+r.id).then(function(h){var t=(new DOMParser().parseFromString(h,'text/html').body.textContent||'').replace(/\s+/g,' ');if(t.indexOf(r.stock)<0)return;var m=t.match(/(?:TOTAL SELLING PRICE|PRIX DE VENTE TOTAL)\s*:?\s*\$?\s*([\d,]+(?:\.\d+)?)/i);r.vendant=m?money(m[1]):'';var v=t.match(/(?:VIN|NIV)\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i)||t.match(/[^A-Z0-9]([A-HJ-NPR-Z0-9]{17})[^A-Z0-9]/i);r.niv=v?v[1]:'';}).catch(function(){}).then(next);}
+  return next().then(function(){return rows;});   // une facture à la fois : One-Eighty mélange les factures lues en parallèle
 }).then(function(rows){
   if(!rows.length)throw new Error('aucune vente en gros entre le '+DEB+' et le '+FIN+' (dates de transaction)');
   var msg={type:'oe-wholesale-seed',id:String(Date.now()),at:new Date().toISOString(),rows:rows};
