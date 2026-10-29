@@ -5,9 +5,10 @@
   'use strict';
   const HACC_ORIGIN = 'https://salesportal-hacc.am.hyundai-corp.io';
   const D2C_ORIGIN = 'https://admin.d2cmedia.ca'; // favori « ⟳ Inventaire D2C » (inventaire usagé)
-  const OE_ORIGIN = 'https://isw.dlsaccelerator.com'; // favori « ⟳ Wholesale One-Eighty » (ventes wholesale)
-  const SEED_ORIGINS = { [HACC_ORIGIN]: 'hacc-board-seed', [D2C_ORIGIN]: 'd2c-seed', [OE_ORIGIN]: 'oe-wholesale-seed' };
-  const SEED_READY = { [HACC_ORIGIN]: () => !!window.HACC_BOARD, [D2C_ORIGIN]: () => !!window.D2C_BOARD, [OE_ORIGIN]: () => !!(window.WS_BOARD && window.WS_BOARD.importOE) };
+  const OE_ORIGIN = 'https://isw.dlsaccelerator.com'; // favoris « ⟳ Wholesale One-Eighty » et « ⟳ Échanges One-Eighty »
+  // One-Eighty envoie deux sortes de données : ventes wholesale (wholesale.html) et échanges entre concessionnaires (echanges.html)
+  const SEED_ORIGINS = { [HACC_ORIGIN]: ['hacc-board-seed'], [D2C_ORIGIN]: ['d2c-seed'], [OE_ORIGIN]: ['oe-wholesale-seed', 'oe-echanges-seed'] };
+  const SEED_READY = { 'hacc-board-seed': () => !!window.HACC_BOARD, 'd2c-seed': () => !!window.D2C_BOARD, 'oe-wholesale-seed': () => !!(window.WS_BOARD && window.WS_BOARD.importOE), 'oe-echanges-seed': () => !!(window.EX_BOARD && window.EX_BOARD.importOE) };
   const SEED_NAME = { [HACC_ORIGIN]: 'HACC', [D2C_ORIGIN]: 'D2C', [OE_ORIGIN]: 'One-Eighty' };
   const SCOPES = [
     'https://www.googleapis.com/auth/drive.readonly',
@@ -133,6 +134,11 @@
       if (!window.WS_BOARD || !window.WS_BOARD.importOE) throw new Error('Page pas encore prête, réessayez.');
       return window.WS_BOARD.importOE(data);
     }
+    if (data && data.type === 'oe-echanges-seed') {            // échanges entre concessionnaires lus dans One-Eighty : fusion faite par echanges.js
+      if (PFX !== 'echanges_') throw new Error('Ces échanges sont pour la page « Échanges ».');
+      if (!window.EX_BOARD || !window.EX_BOARD.importOE) throw new Error('Page pas encore prête, réessayez.');
+      return window.EX_BOARD.importOE(data);
+    }
     if (!isAdmin()) throw new Error('Seule une administratrice peut mettre à jour l\'inventaire.');
     const at = new Date().toISOString();
     if (data && data.type === 'd2c-seed') {
@@ -160,8 +166,8 @@
   }
   const seenIds = new Set();
   window.addEventListener('message', async e => {
-    if (!e.data || !SEED_ORIGINS[e.origin] || e.data.type !== SEED_ORIGINS[e.origin]) return;
-    if (!currentUser || !SEED_READY[e.origin]()) return;       // pas encore prête : le favori réessaie
+    if (!e.data || !SEED_ORIGINS[e.origin] || !SEED_ORIGINS[e.origin].includes(e.data.type)) return;
+    if (!currentUser || !SEED_READY[e.data.type]()) return;       // pas encore prête : le favori réessaie
     if (seenIds.has(e.data.id)) return; seenIds.add(e.data.id);
     try { const m = await importData(e.data, SEED_NAME[e.origin]); e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: true, msg: m }, e.origin); }
     catch (err) { e.source && e.source.postMessage({ type: 'hacc-board-ack', ok: false, msg: err.message }, e.origin); window.HACC_BOARD && window.HACC_BOARD.haccMsg(err.message, true); }

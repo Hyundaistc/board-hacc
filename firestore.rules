@@ -1,5 +1,5 @@
 rules_version = '2';
-// Règles de sécurité — Board HACC / Inventaire usagé D2C / Ventes wholesale (Hyundai St-Constant)
+// Règles de sécurité — Board HACC / Inventaire usagé D2C / Ventes wholesale / Échanges (Hyundai St-Constant)
 // Accès sur INVITATION seulement : l'admin ajoute chaque personne dans « membres » (ID = courriel en minuscules).
 //   role "equipe"  : voit tout et peut cocher Vendu, saisir les ventes
 //   role "lecture" : voit seulement
@@ -26,6 +26,8 @@ service cloud.firestore {
     // Ventes wholesale (wholesale.html)
     match /wholesale_suivi/{id}  { allow read: if canRead(); allow write: if canWrite(); }
     match /wholesale_config/{id} { allow read: if canRead(); allow write: if canWrite(); }
+    // Échanges entre concessionnaires (echanges.html)
+    match /echanges_suivi/{id}   { allow read: if canRead(); allow write: if canWrite(); }
     // Accès
     match /membres/{id}          { allow read: if isAdmin() || (signedIn() && id == email()); allow write: if isAdmin(); }
   }

@@ -36,11 +36,12 @@
     { href: 'neuf.html#stock', titre: 'Inventaire neuf', sous: 'Stock, arrivages et ventes', svg: icone('#tog-inv svg') },
     { href: 'usage.html', titre: 'Inventaire usagé', sous: 'Occasions D2C et ventes', svg: icone('#tog-inv svg') },
     { href: 'wholesale.html', titre: 'Ventes wholesale', sous: 'Autos vendues aux marchands · profit du mois', svg: icone('#tog-inv svg') },
+    { href: 'echanges.html', titre: 'Échanges', sous: 'Véhicules sortis vers d\'autres concessionnaires', svg: icone('#tog-inv svg') },
     { id: 'evaluation', titre: 'Évaluation', svg: icone('.nav-i[data-route="evaluation"] svg'), aVenir: true }
   ];
 
   // ---------- Données : mêmes sources et mêmes règles que les inventaires ----------
-  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, wsuivi: null, cfgW: null, csi: undefined, err: false };
+  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, wsuivi: null, cfgW: null, esuivi: null, csi: undefined, err: false };
   const lireInv = s => { const x = s && s.exists ? (s.data() || {}) : {}; let rows = null; try { rows = JSON.parse(x.json || 'null'); } catch (e) {} return { rows: Array.isArray(rows) ? rows : [], date: x.date || '', at: x.at || '' }; };
   const lireCol = s => { const m = {}; s.docs.forEach(d => { m[d.id] = d.data() || {}; }); return m; };
   const surErreur = () => { D.err = true; peindre(); };
@@ -53,6 +54,8 @@
     DB.doc('usage_config/ventes').onSnapshot(s => { D.cfgU = s.exists ? (s.data() || {}) : {}; peindre(); }, surErreur);
     // Ventes wholesale (wholesale.js) : profit du mois = vendant − coûtant, annulées exclues
     DB.collection('wholesale_suivi').onSnapshot(s => { D.wsuivi = lireCol(s); peindre(); }, () => { D.wsuivi = {}; peindre(); });
+    // Échanges (echanges.js) : nombre de véhicules sortis ce mois, annulés exclus
+    DB.collection('echanges_suivi').onSnapshot(s => { D.esuivi = lireCol(s); peindre(); }, () => { D.esuivi = {}; peindre(); });
     DB.doc('wholesale_config/ventes').onSnapshot(s => { D.cfgW = s.exists ? (s.data() || {}) : {}; peindre(); }, () => { D.cfgW = {}; peindre(); });
     DB.doc('config/csi').onSnapshot(s => { D.csi = s.exists ? (s.data() || {}) : null; peindre(); }, () => { D.csi = null; peindre(); });
   }
@@ -80,6 +83,7 @@
       const w = Object.values(D.wsuivi).filter(n => n && n.vendu && (n.soldAt || '').slice(0, 7) === mois && active(n));
       c.wVentes = w.length; c.wProfit = Math.round(w.reduce((a, n) => a + (num((n.vente || {}).vendant) - num((n.vente || {}).coutant)), 0));
     }
+    if (D.esuivi) c.eVentes = Object.values(D.esuivi).filter(n => n && n.vendu && (n.soldAt || '').slice(0, 7) === mois && ((n.vente && n.vente.statut) || 'alivrer') !== 'cancel').length;
     if (D.cfgN) c.objN = num(D.cfgN.objectif ?? 66);
     if (D.cfgU) c.objU = num(D.cfgU.objectif ?? 50);
     if (D.cfgW) c.objW = num(D.cfgW.objectif ?? 40000);
@@ -112,7 +116,8 @@
       tuile('usage.html', 'Usagé en stock', v(c.uDispo), c.uLigne != null ? 'disponibles · ' + nb(c.uLigne) + ' en ligne · ' + nb(c.u60) + ' de plus de 60 j' : 'disponibles'),
       tuile('usage.html#ventes', 'Ventes usagé · ' + moisNom, v(c.uVentes) + obj(c.uVentes, c.objU), pU == null ? 'ce mois-ci' : pU + ' % de l\'objectif', barre(pU)),
       tuileCsi('service', moisNom),
-      tuile('wholesale.html', 'Wholesale · ' + moisNom, c.wProfit == null ? v(c.wProfit) : (c.wProfit < 0 ? '−' : '') + nb(Math.abs(c.wProfit)) + ' $' + (c.objW ? `<small> / ${nb(c.objW)} $</small>` : ''), c.wVentes == null ? 'profit du mois' : pluriel(c.wVentes, 'auto vendue', 'autos vendues') + (pW == null ? '' : ' · ' + pW + ' % de l\'objectif'), barre(pW))
+      tuile('wholesale.html', 'Wholesale · ' + moisNom, c.wProfit == null ? v(c.wProfit) : (c.wProfit < 0 ? '−' : '') + nb(Math.abs(c.wProfit)) + ' $' + (c.objW ? `<small> / ${nb(c.objW)} $</small>` : ''), c.wVentes == null ? 'profit du mois' : pluriel(c.wVentes, 'auto vendue', 'autos vendues') + (pW == null ? '' : ' · ' + pW + ' % de l\'objectif'), barre(pW)),
+      tuile('echanges.html', 'Échanges · ' + moisNom, v(c.eVentes), 'véhicules sortis vers d\'autres concessionnaires')
     ].join('');
     const maj = $('maj');
     if (maj) maj.textContent = [D.invAt && 'Neuf : HACC du ' + quand(D.invAt), D.uinvAt && 'Usagé : D2C du ' + quand(D.uinvAt)].filter(Boolean).join(' · ');
