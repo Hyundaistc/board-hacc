@@ -26,7 +26,7 @@ service cloud.firestore {
     // Ventes wholesale (wholesale.html)
     match /wholesale_suivi/{id}  { allow read: if canRead(); allow write: if canWrite(); }
     match /wholesale_config/{id} { allow read: if canRead(); allow write: if canWrite(); }
-   match /echanges_suivi/{id}   { allow read: if canRead(); allow write: if canWrite(); }
+    match /echanges_suivi/{id}   { allow read: if canRead(); allow write: if canWrite(); }
     // Échanges entre concessionnaires (echanges.html)
     match /echanges_suivi/{id}   { allow read: if canRead(); allow write: if canWrite(); }
     // Accès
