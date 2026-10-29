@@ -41,7 +41,7 @@
   ];
 
   // ---------- Données : mêmes sources et mêmes règles que les inventaires ----------
-  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, wsuivi: null, cfgW: null, esuivi: null, csi: undefined, err: false };
+  const D = { inv: null, invDate: '', invAt: '', suivi: null, cfgN: null, uinv: null, uinvAt: '', usuivi: null, cfgU: null, wsuivi: null, cfgW: null, esuivi: null, csi: undefined, cb: undefined, err: false };
   const lireInv = s => { const x = s && s.exists ? (s.data() || {}) : {}; let rows = null; try { rows = JSON.parse(x.json || 'null'); } catch (e) {} return { rows: Array.isArray(rows) ? rows : [], date: x.date || '', at: x.at || '' }; };
   const lireCol = s => { const m = {}; s.docs.forEach(d => { m[d.id] = d.data() || {}; }); return m; };
   const surErreur = () => { D.err = true; peindre(); };
@@ -58,6 +58,8 @@
     DB.collection('echanges_suivi').onSnapshot(s => { D.esuivi = lireCol(s); peindre(); }, () => { D.esuivi = {}; peindre(); });
     DB.doc('wholesale_config/ventes').onSnapshot(s => { D.cfgW = s.exists ? (s.data() || {}) : {}; peindre(); }, () => { D.cfgW = {}; peindre(); });
     DB.doc('config/csi').onSnapshot(s => { D.csi = s.exists ? (s.data() || {}) : null; peindre(); }, () => { D.csi = null; peindre(); });
+    // Comeback (comeback.js) : montants du mois par département, lus chaque matin dans les Google Sheets (comeback/Code.gs)
+    DB.doc('config/comeback').onSnapshot(s => { let d = null; try { d = JSON.parse((s.exists && (s.data() || {}).json) || 'null'); } catch (e) {} D.cb = d && typeof d === 'object' ? d : null; peindre(); }, () => { D.cb = null; peindre(); });
   }
 
   function chiffres() {
@@ -101,6 +103,14 @@
     const e = sc.ecart, ec = e == null ? '' : `<em class="${e >= 0 ? 'ok' : 'bad'}">${e >= 0 ? '+' : '−'}${f1(Math.abs(e))} pts vs cible</em>`;
     return tuile('#/csi/' + t, k, f1(sc.score), ['NPS', ec, sc.sondages != null ? pluriel(sc.sondages, 'sondage', 'sondages') : ''].filter(Boolean).join(' · '));
   }
+  // Comeback : montant accordé ce mois-ci pour un département (neuf, usage, service)
+  function tuileComeback(dept, nom, moisNom) {
+    const k = 'Comeback ' + nom + ' · ' + moisNom, href = '#/comeback/' + dept;
+    if (D.cb === undefined) return tuile(href, k, '…', 'montant du mois');
+    if (!D.cb) return tuile(href, k, '—', 'à importer depuis les Google Sheets');
+    const r = ((D.cb.mois || {})[todayTO().slice(0, 7)] || {})[dept] || {}, t = +r.total || 0, n = +r.n || 0;
+    return tuile(href, k, nb(Math.round(t)) + ' $', n ? pluriel(n, 'comeback', 'comebacks') + ' ce mois-ci' : 'aucun comeback ce mois-ci');
+  }
   function peindre() {
     const el = $('stats'); if (!el) return;
     const c = chiffres(), moisNom = MOIS[+todayTO().slice(5, 7) - 1];
@@ -117,7 +127,10 @@
       tuile('usage.html#ventes', 'Ventes usagé · ' + moisNom, v(c.uVentes) + obj(c.uVentes, c.objU), pU == null ? 'ce mois-ci' : pU + ' % de l\'objectif', barre(pU)),
       tuileCsi('service', moisNom),
       tuile('wholesale.html', 'Wholesale · ' + moisNom, c.wProfit == null ? v(c.wProfit) : (c.wProfit < 0 ? '−' : '') + nb(Math.abs(c.wProfit)) + ' $' + (c.objW ? `<small> / ${nb(c.objW)} $</small>` : ''), c.wVentes == null ? 'profit du mois' : pluriel(c.wVentes, 'auto vendue', 'autos vendues') + (pW == null ? '' : ' · ' + pW + ' % de l\'objectif'), barre(pW)),
-      tuile('echanges.html', 'Échanges · ' + moisNom, v(c.eVentes), 'véhicules sortis vers d\'autres concessionnaires')
+      tuile('echanges.html', 'Échanges · ' + moisNom, v(c.eVentes), 'véhicules sortis vers d\'autres concessionnaires'),
+      tuileComeback('neuf', 'neuf', moisNom),
+      tuileComeback('usage', 'usagé', moisNom),
+      tuileComeback('service', 'service', moisNom)
     ].join('');
     const maj = $('maj');
     if (maj) maj.textContent = [D.invAt && 'Neuf : HACC du ' + quand(D.invAt), D.uinvAt && 'Usagé : D2C du ' + quand(D.uinvAt)].filter(Boolean).join(' · ');
@@ -153,7 +166,7 @@
     },
     rafraichir: () => route(false)
   };
-  const MODULES = ['csi.js'];
+  const MODULES = ['csi.js', 'comeback.js'];
   await Promise.all(MODULES.map(f => new Promise(ok => { const s = document.createElement('script'); s.src = f + '?v=' + (window.HACC_VERSION || '1'); s.onload = s.onerror = ok; document.head.appendChild(s); })));
 
   // ---------- Navigation ----------
